@@ -1,0 +1,24 @@
+#!/bin/bash
+# Post-install script for Clackity
+# Removes web quarantine so macOS Gatekeeper allows the open-source app to open smoothly
+
+APP_PATH="/Applications/Clackity.app"
+
+if [ -d "$APP_PATH" ]; then
+    # Strip quarantine extended attributes
+    /usr/bin/xattr -cr "$APP_PATH" 2>/dev/null || true
+    
+    # Ensure correct permissions
+    /bin/chmod -R 755 "$APP_PATH" 2>/dev/null || true
+    
+    # Transfer ownership to current console user so in-app updates work without root
+    CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null || echo "$USER")
+    if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+        /usr/sbin/chown -R "$CONSOLE_USER":admin "$APP_PATH" 2>/dev/null || true
+    fi
+    
+    # Register with LaunchServices
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_PATH" 2>/dev/null || true
+fi
+
+exit 0
