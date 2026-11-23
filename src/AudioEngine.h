@@ -3,6 +3,13 @@
 #import "SoundSynthesizer.h"
 #import "SoundPackManager.h"
 
+typedef NS_ENUM(NSInteger, ClackityRoomAcousticPreset) {
+    ClackityRoomAcousticDirect = 0,       // Dry / Direct close mic
+    ClackityRoomAcousticHardwoodDesk = 1, // Hardwood Desk reflection (Close Boundary)
+    ClackityRoomAcousticStudioFoam = 2,   // Acoustic Studio Foam (Tight Chamber)
+    ClackityRoomAcousticOpenLoft = 3      // Open Loft Room (Natural Air Reverb)
+};
+
 @interface AudioEngine : NSObject
 
 @property (nonatomic, assign) ClackitySoundProfile currentProfile;
@@ -25,6 +32,12 @@
 @property (nonatomic, assign) BOOL typewriterMarginBellOnly;
 @property (nonatomic, assign) NSInteger typewriterMarginLength;
 
+// Acoustic Innovations Suite
+@property (nonatomic, assign) BOOL keyPitchRowMappingEnabled;
+@property (nonatomic, assign) BOOL krytoxLubeEnabled;
+@property (nonatomic, assign) BOOL springPingEnabled;
+@property (nonatomic, assign) ClackityRoomAcousticPreset roomAcousticPreset;
+
 + (instancetype)sharedEngine;
 
 - (void)start;
@@ -38,6 +51,7 @@
 - (void)playTypewriterBell;
 - (void)playTypewriterCarriageReturn;
 - (void)playTypewriterRatchet;
+- (void)playSpringPing;
 - (void)toggleMute;
 
 - (void)reloadBuffers;

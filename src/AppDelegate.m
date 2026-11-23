@@ -129,6 +129,12 @@
     // Start background auto-updater checks
     [[UpdateManager sharedManager] startPeriodicChecks];
     
+    // Register custom URL scheme handler (clackity://)
+    [[NSAppleEventManager sharedAppleEventManager] setEventHandler:self
+                                                       andSelector:@selector(handleGetURLEvent:withReplyEvent:)
+                                                     forEventClass:kInternetEventClass
+                                                        andEventID:kAEGetURL];
+    
     BOOL started = [monitor start];
     if (!started || ![InputMonitor isAccessibilityGranted]) {
         NSLog(@"[Clackity] Accessibility permission needed for global input interception.");
@@ -314,6 +320,122 @@
 
 - (void)inputMonitorDidDetectScroll {
     [[AudioEngine sharedEngine] playScroll];
+}
+
+#pragma mark - Custom URL Scheme (clackity://)
+
+- (void)handleGetURLEvent:(NSAppleEventDescriptor *)event withReplyEvent:(NSAppleEventDescriptor *)replyEvent {
+    NSString *urlString = [[event paramDescriptorForKeyword:keyDirectObject] stringValue];
+    if (urlString) {
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (url) {
+            [self handleIncomingURL:url];
+        }
+    }
+}
+
+- (void)handleIncomingURL:(NSURL *)url {
+    if (![url.scheme.lowercaseString isEqualToString:@"clackity"]) return;
+    
+    NSString *host = url.host.lowercaseString;
+    if (!host || host.length == 0) {
+        host = [[url.path stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/"]] lowercaseString];
+    }
+    
+    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    NSMutableDictionary<NSString *, NSString *> *params = [NSMutableDictionary dictionary];
+    for (NSURLQueryItem *item in components.queryItems) {
+        if (item.name && item.value) {
+            params[item.name.lowercaseString] = item.value;
+        }
+    }
+    
+    AudioEngine *audio = [AudioEngine sharedEngine];
+    
+    if ([host isEqualToString:@"switch"]) {
+        NSString *name = params[@"name"] ?: params[@"profile"];
+        if (name) {
+            BOOL matched = NO;
+            // 1. Search custom studio packs
+            for (CustomSoundPack *pack in [SoundPackManager sharedManager].customPacks) {
+                if ([pack.name localizedCaseInsensitiveContainsString:name]) {
+                    audio.customPack = pack;
+                    [[NSUserDefaults standardUserDefaults] setObject:pack.name forKey:@"selectedCustomPack"];
+                    matched = YES;
+                    break;
+                }
+            }
+            // 2. Search synthesized profiles
+            if (!matched) {
+                for (NSNumber *num in [SoundSynthesizer allProfiles]) {
+                    ClackitySoundProfile p = (ClackitySoundProfile)[num integerValue];
+                    NSString *pName = [SoundSynthesizer nameForProfile:p];
+                    if ([pName localizedCaseInsensitiveContainsString:name]) {
+                        audio.customPack = nil;
+                        audio.currentProfile = p;
+                        [[NSUserDefaults standardUserDefaults] setInteger:p forKey:@"selectedProfile"];
+                        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"selectedCustomPack"];
+                        matched = YES;
+                        break;
+                    }
+                }
+            }
+            if (matched) {
+                [[MenuBarController sharedController] updateStatusItem];
+                [audio playKeyWithCategory:ClackityKeyCategoryEnter isKeyUp:NO];
+                NSLog(@"[Clackity] Switched switch profile to '%@' via URL", name);
+            }
+        }
+    } else if ([host isEqualToString:@"mute"]) {
+        audio.keySoundsEnabled = NO;
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"keySoundsEnabled"];
+        [[MenuBarController sharedController] updateStatusItem];
+    } else if ([host isEqualToString:@"unmute"]) {
+        audio.keySoundsEnabled = YES;
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"keySoundsEnabled"];
+        [[MenuBarController sharedController] updateStatusItem];
+    } else if ([host isEqualToString:@"toggle-mute"] || [host isEqualToString:@"toggle"]) {
+        [audio toggleMute];
+        [[MenuBarController sharedController] updateStatusItem];
+    } else if ([host isEqualToString:@"volume"]) {
+        NSString *lvl = params[@"level"] ?: params[@"val"];
+        if (lvl) {
+            float val = [lvl floatValue];
+            if (val > 1.0f) val /= 100.0f;
+            val = fmaxf(0.0f, fminf(1.0f, val));
+            audio.masterVolume = val;
+            [[NSUserDefaults standardUserDefaults] setFloat:val forKey:@"masterVolume"];
+            [[MenuBarController sharedController] updateStatusItem];
+            [audio playKeyWithCategory:ClackityKeyCategoryStandard isKeyUp:NO];
+        }
+    } else if ([host isEqualToString:@"haptics"]) {
+        NSString *profile = params[@"profile"] ?: params[@"intensity"];
+        if (profile) {
+            if ([profile localizedCaseInsensitiveContainsString:@"subtle"]) {
+                [HapticEngine sharedEngine].intensity = ClackityHapticIntensitySubtle;
+            } else if ([profile localizedCaseInsensitiveContainsString:@"heavy"]) {
+                [HapticEngine sharedEngine].intensity = ClackityHapticIntensityHeavy;
+            } else {
+                [HapticEngine sharedEngine].intensity = ClackityHapticIntensityCrisp;
+            }
+            [[HapticEngine sharedEngine] triggerKeyHaptic];
+        }
+        NSString *enabled = params[@"enabled"];
+        if (enabled) {
+            BOOL on = [enabled boolValue] || [enabled isEqualToString:@"1"] || [enabled localizedCaseInsensitiveContainsString:@"true"];
+            [HapticEngine sharedEngine].enabled = on;
+        }
+    } else if ([host isEqualToString:@"typewriter"]) {
+        NSString *enabled = params[@"enabled"];
+        if (enabled) {
+            BOOL on = [enabled boolValue] || [enabled isEqualToString:@"1"] || [enabled localizedCaseInsensitiveContainsString:@"true"];
+            audio.typewriterModeEnabled = on;
+            if (on) [audio playTypewriterCarriageReturn];
+        }
+    } else if ([host isEqualToString:@"settings"]) {
+        [NSApp activateIgnoringOtherApps:YES];
+        [[SettingsWindowController sharedController] showSettingsWindow:nil];
+    }
 }
 
 @end

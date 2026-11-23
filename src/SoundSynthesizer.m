@@ -500,4 +500,43 @@ typedef struct {
     return [self typewriterBackspaceRatchetBuffer];
 }
 
+#pragma mark - Mechanical Switch Spring Ping Synthesis
+
++ (AVAudioPCMBuffer *)springPingBuffer {
+    const double sampleRate = 44100.0;
+    const double duration = 0.075; // 75ms steel spring reverberation tail
+    AVAudioFormat *format = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:sampleRate channels:1];
+    AVAudioFrameCount frameCount = (AVAudioFrameCount)(sampleRate * duration);
+    AVAudioPCMBuffer *buffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:format frameCapacity:frameCount];
+    buffer.frameLength = frameCount;
+    
+    float *data = buffer.floatChannelData[0];
+    
+    const double fSpring1 = 2640.0; // Primary helical transverse mode
+    const double fSpring2 = 3960.0; // Secondary overtone mode
+    
+    for (AVAudioFrameCount i = 0; i < frameCount; i++) {
+        double t = (double)i / sampleRate;
+        double attack = (t < 0.0003) ? (t / 0.0003) : 1.0;
+        
+        // Helical spring decay
+        double env1 = exp(-t * 36.0);
+        double env2 = exp(-t * 55.0);
+        
+        double tone1 = sin(2.0 * M_PI * fSpring1 * t);
+        double tone2 = sin(2.0 * M_PI * fSpring2 * t);
+        
+        // Micro metallic snap at onset
+        double snap = 0.0;
+        if (t < 0.003) {
+            snap = (((double)arc4random() / 0x7FFFFFFF) * 2.0 - 1.0) * exp(-t * 1200.0) * 0.35;
+        }
+        
+        double sample = attack * (0.65 * env1 * tone1 + 0.35 * env2 * tone2 + snap) * 0.70;
+        data[i] = (float)tanh(sample);
+    }
+    
+    return buffer;
+}
+
 @end

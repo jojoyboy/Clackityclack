@@ -10,5 +10,6 @@
 @property (nonatomic, readonly) NSUInteger currentWPM;
 
 - (void)resetSessionStats;
+- (void)handleIncomingURL:(NSURL *)url;
 
 @end

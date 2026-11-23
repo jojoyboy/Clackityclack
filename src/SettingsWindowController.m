@@ -345,6 +345,13 @@
 @property (nonatomic, strong) NSButton *testReturnBtn;
 @property (nonatomic, strong) NSButton *testBellBtn;
 @property (nonatomic, strong) NSButton *testRatchetBtn;
+
+// Acoustic Innovations Suite
+@property (nonatomic, strong) NSButton *rowPitchMappingCheck;
+@property (nonatomic, strong) NSButton *krytoxLubeCheck;
+@property (nonatomic, strong) NSButton *springPingCheck;
+@property (nonatomic, strong) NSPopUpButton *roomAcousticPopUp;
+
 @property (nonatomic, strong) NSButton *velocityDynamicsCheck;
 @property (nonatomic, strong) NSButton *secureInputCheck;
 @property (nonatomic, strong) NSButton *meetingMuteCheck;
@@ -821,7 +828,7 @@
 #pragma mark - Section 1: Acoustics & EQ
 
 - (FlippedView *)buildAcousticsView {
-    CGFloat totalHeight = 780.0;
+    CGFloat totalHeight = 955.0;
     FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, totalHeight)];
     container.autoresizingMask = NSViewWidthSizable;
     CGFloat cardWidth = 495.0;
@@ -871,8 +878,53 @@
     eqDesc.autoresizingMask = NSViewWidthSizable;
     [eqCard addSubview:eqDesc];
     
-    // 2. Authentic Vintage Typewriter Mechanics Card (Y = 181, height = 206)
-    FlippedCardView *twCard = [self cardContainerWithFrame:NSMakeRect(x, 181, cardWidth, 206)];
+    // 2. Acoustic Innovations Suite Card (Y = 181, height = 165)
+    FlippedCardView *innoCard = [self cardContainerWithFrame:NSMakeRect(x, 181, cardWidth, 165)];
+    [container addSubview:innoCard];
+    
+    NSTextField *innoTitle = [self labelWithText:@"Acoustic Innovations Suite (Physical Modeling)" bold:YES fontSize:13.5];
+    innoTitle.frame = NSMakeRect(18, 14, 430, 18);
+    [innoCard addSubview:innoTitle];
+    
+    NSTextField *innoDesc = [self labelWithText:@"High-fidelity acoustic modeling: geometric row pitch, hand-lubed dampening, & spring resonance." bold:NO fontSize:11];
+    innoDesc.textColor = [NSColor secondaryLabelColor];
+    innoDesc.frame = NSMakeRect(18, 34, 450, 16);
+    innoDesc.autoresizingMask = NSViewWidthSizable;
+    [innoCard addSubview:innoDesc];
+    
+    self.rowPitchMappingCheck = [self checkboxWithTitle:@"Key-Pitch Row Mapping (natural pitch contours across keyboard geometry)" action:@selector(rowPitchMappingToggled:)];
+    self.rowPitchMappingCheck.frame = NSMakeRect(18, 56, 450, 20);
+    self.rowPitchMappingCheck.autoresizingMask = NSViewWidthSizable;
+    [innoCard addSubview:self.rowPitchMappingCheck];
+    
+    self.krytoxLubeCheck = [self checkboxWithTitle:@"Krytox GPL 205g0 Lubed Switch Mode (buttery smooth dampening)" action:@selector(krytoxLubeToggled:)];
+    self.krytoxLubeCheck.frame = NSMakeRect(18, 80, 450, 20);
+    self.krytoxLubeCheck.autoresizingMask = NSViewWidthSizable;
+    [innoCard addSubview:self.krytoxLubeCheck];
+    
+    self.springPingCheck = [self checkboxWithTitle:@"Vintage Helical Spring Ping (steel spring vibration tail on key release)" action:@selector(springPingToggled:)];
+    self.springPingCheck.frame = NSMakeRect(18, 104, 450, 20);
+    self.springPingCheck.autoresizingMask = NSViewWidthSizable;
+    [innoCard addSubview:self.springPingCheck];
+    
+    NSTextField *roomLabel = [self labelWithText:@"Desk & Room Reflection:" bold:NO fontSize:11.5];
+    roomLabel.frame = NSMakeRect(20, 132, 165, 18);
+    [innoCard addSubview:roomLabel];
+    
+    self.roomAcousticPopUp = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(185, 128, 280, 26) pullsDown:NO];
+    [self.roomAcousticPopUp addItemsWithTitles:@[
+        @"Dry / Direct Close Mic (No Reverb)",
+        @"Hardwood Desk Surface (Close Boundary)",
+        @"Treated Acoustic Studio (Tight Chamber)",
+        @"Open Loft Space (Natural Ambient Air)"
+    ]];
+    self.roomAcousticPopUp.target = self;
+    self.roomAcousticPopUp.action = @selector(roomAcousticChanged:);
+    self.roomAcousticPopUp.autoresizingMask = NSViewWidthSizable;
+    [innoCard addSubview:self.roomAcousticPopUp];
+    
+    // 3. Authentic Vintage Typewriter Mechanics Card (Y = 364, height = 206)
+    FlippedCardView *twCard = [self cardContainerWithFrame:NSMakeRect(x, 364, cardWidth, 206)];
     [container addSubview:twCard];
     
     NSTextField *twTitle = [self labelWithText:@"Vintage Typewriter Mechanics (Authentic Acoustic Suite)" bold:YES fontSize:13.5];
@@ -938,8 +990,8 @@
     self.testRatchetBtn.autoresizingMask = NSViewMinXMargin;
     [twCard addSubview:self.testRatchetBtn];
     
-    // 3. Dynamic Strike Velocity & Spatial Audio (Y = 405, height = 115)
-    FlippedCardView *dynCard = [self cardContainerWithFrame:NSMakeRect(x, 405, cardWidth, 115)];
+    // 4. Dynamic Strike Velocity & Spatial Audio (Y = 588, height = 115)
+    FlippedCardView *dynCard = [self cardContainerWithFrame:NSMakeRect(x, 588, cardWidth, 115)];
     [container addSubview:dynCard];
     
     NSTextField *dynTitle = [self labelWithText:@"Dynamics & Spatial Stereo Acoustics" bold:YES fontSize:13];
@@ -961,8 +1013,8 @@
     self.muteModifiersCheck.autoresizingMask = NSViewWidthSizable;
     [dynCard addSubview:self.muteModifiersCheck];
     
-    // 4. Privacy & Meeting Intelligence (Y = 538, height = 85)
-    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 538, cardWidth, 85)];
+    // 5. Privacy & Meeting Intelligence (Y = 721, height = 85)
+    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 721, cardWidth, 85)];
     [container addSubview:privCard];
     
     NSTextField *privTitle = [self labelWithText:@"Privacy & Trigger Suppression" bold:YES fontSize:13];
@@ -979,8 +1031,8 @@
     self.meetingMuteCheck.autoresizingMask = NSViewWidthSizable;
     [privCard addSubview:self.meetingMuteCheck];
     
-    // 5. Acoustic Trigger Controls (Y = 641, height = 115)
-    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 641, cardWidth, 115)];
+    // 6. Acoustic Trigger Controls (Y = 824, height = 115)
+    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 824, cardWidth, 115)];
     [container addSubview:trigCard];
     
     NSTextField *trigTitle = [self labelWithText:@"Detailed Audio Triggers" bold:YES fontSize:13];
@@ -1407,6 +1459,12 @@
     self.typewriterRatchetCheck.state = audio.typewriterRatchetEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     [self updateTypewriterControlsState];
     
+    // Acoustic Innovations Suite
+    self.rowPitchMappingCheck.state = audio.keyPitchRowMappingEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.krytoxLubeCheck.state = audio.krytoxLubeEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.springPingCheck.state = audio.springPingEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [self.roomAcousticPopUp selectItemAtIndex:audio.roomAcousticPreset];
+    
     HapticEngine *haptic = [HapticEngine sharedEngine];
     self.hapticEnabledCheck.state = haptic.enabled ? NSControlStateValueOn : NSControlStateValueOff;
     
@@ -1694,6 +1752,29 @@
 
 - (void)testRatchetClicked:(NSButton *)sender {
     [[AudioEngine sharedEngine] playTypewriterRatchet];
+}
+
+#pragma mark - Acoustic Innovations Suite Actions
+
+- (void)rowPitchMappingToggled:(NSButton *)sender {
+    [AudioEngine sharedEngine].keyPitchRowMappingEnabled = (sender.state == NSControlStateValueOn);
+}
+
+- (void)krytoxLubeToggled:(NSButton *)sender {
+    [AudioEngine sharedEngine].krytoxLubeEnabled = (sender.state == NSControlStateValueOn);
+    [[AudioEngine sharedEngine] playKeyWithCategory:ClackityKeyCategoryStandard isKeyUp:NO];
+}
+
+- (void)springPingToggled:(NSButton *)sender {
+    [AudioEngine sharedEngine].springPingEnabled = (sender.state == NSControlStateValueOn);
+    if (sender.state == NSControlStateValueOn) {
+        [[AudioEngine sharedEngine] playSpringPing];
+    }
+}
+
+- (void)roomAcousticChanged:(NSPopUpButton *)sender {
+    [AudioEngine sharedEngine].roomAcousticPreset = (ClackityRoomAcousticPreset)sender.indexOfSelectedItem;
+    [[AudioEngine sharedEngine] playKeyWithCategory:ClackityKeyCategoryStandard isKeyUp:NO];
 }
 
 - (void)updateHapticControlsState {

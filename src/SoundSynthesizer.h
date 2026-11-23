@@ -46,6 +46,9 @@ typedef NS_ENUM(NSInteger, ClackityKeyCategory) {
 + (AVAudioPCMBuffer *)typewriterCarriageReturnBuffer;
 + (AVAudioPCMBuffer *)typewriterBackspaceRatchetBuffer;
 
+// Spring Ping Synthesis
++ (AVAudioPCMBuffer *)springPingBuffer;
+
 // Legacy / Classic Chime
 + (AVAudioPCMBuffer *)typewriterCarriageReturnBellBuffer;
 + (AVAudioPCMBuffer *)typewriterRatchetBuffer;

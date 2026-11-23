@@ -36,5 +36,18 @@
     <string>NSApplication</string>
     <key>NSAccessibilityUsageDescription</key>
     <string>Clackity uses accessibility permissions to trigger acoustic switch sounds when you type and click.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLName</key>
+            <string>com.jojoyboy.Clackity.url</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>clackity</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

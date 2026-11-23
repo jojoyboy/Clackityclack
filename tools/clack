@@ -1,0 +1,108 @@
+#!/bin/sh
+# clack - Ultra-fast CLI controller for Clackity
+# Supports Raycast, Alfred, Terminal, and macOS Shortcuts
+
+CMD="$1"
+[ -n "$CMD" ] && shift
+
+case "$CMD" in
+    switch)
+        NAME="$*"
+        if [ -z "$NAME" ]; then
+            echo "Usage: clack switch <name>"
+            echo "Example: clack switch \"Holy Panda\""
+            exit 1
+        fi
+        ENCODED=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(' '.join(sys.argv[1:])))" "$NAME")
+        open -g "clackity://switch?name=$ENCODED"
+        echo "⚡ Switched Clackity profile to: $NAME"
+        ;;
+    mute)
+        open -g "clackity://mute"
+        echo "🔇 Clackity muted"
+        ;;
+    unmute)
+        open -g "clackity://unmute"
+        echo "🔊 Clackity unmuted"
+        ;;
+    toggle)
+        open -g "clackity://toggle"
+        echo "🔄 Clackity audio toggled"
+        ;;
+    volume)
+        VOL="$1"
+        if [ -z "$VOL" ]; then
+            echo "Usage: clack volume <0-100>"
+            exit 1
+        fi
+        open -g "clackity://volume?level=$VOL"
+        echo "🔊 Clackity volume set to $VOL%"
+        ;;
+    haptics)
+        PROFILE="$1"
+        if [ -z "$PROFILE" ]; then
+            echo "Usage: clack haptics <subtle|crisp|heavy|on|off>"
+            exit 1
+        fi
+        case "$PROFILE" in
+            on|true|1)
+                open -g "clackity://haptics?enabled=true"
+                echo "📳 Clackity haptics enabled"
+                ;;
+            off|false|0)
+                open -g "clackity://haptics?enabled=false"
+                echo "📳 Clackity haptics disabled"
+                ;;
+            *)
+                open -g "clackity://haptics?profile=$PROFILE&enabled=true"
+                echo "📳 Clackity haptic intensity set to: $PROFILE"
+                ;;
+        esac
+        ;;
+    typewriter)
+        STATE="${1:-on}"
+        open -g "clackity://typewriter?enabled=$STATE"
+        echo "🔔 Clackity vintage typewriter mode: $STATE"
+        ;;
+    settings)
+        open "clackity://settings"
+        ;;
+    list)
+        echo "🎙️  Studio Switch Recordings:"
+        echo "  • Holy Panda (Studio Tactile)"
+        echo "  • NovelKeys Cream (Studio POM)"
+        echo "  • Turquoise Tealios (Studio Linear)"
+        echo ""
+        echo "🎹 Synthesized Physical Models:"
+        echo "  • Gateron Oil King (Deep Thock)"
+        echo "  • Boba U4T (Thocky Tactile)"
+        echo "  • Alpaca V2 (Marbly Linear)"
+        echo "  • Topre 45g (Silent Electro-Capacitive)"
+        echo "  • Cherry MX Black (Vintage Nylon)"
+        echo "  • Kailh Box White (Click-Bar)"
+        echo "  • IBM Model M (Buckling Spring)"
+        echo "  • Apple M0115 (ALPS Cream Damped)"
+        echo "  • Underwood Typewriter"
+        echo "  • Modern Pop (ASMR Bubble)"
+        ;;
+    help|--help|-h|"")
+        echo "Clackity CLI Controller"
+        echo "Usage: clack <command> [arguments]"
+        echo ""
+        echo "Commands:"
+        echo "  switch <name>       Switch switch profile (e.g. 'clack switch Holy Panda')"
+        echo "  mute                Mute all key and click sounds"
+        echo "  unmute              Unmute sounds"
+        echo "  toggle              Toggle mute on/off"
+        echo "  volume <0-100>      Set master audio volume"
+        echo "  haptics <profile>   Set trackpad tactile kick (subtle | crisp | heavy | on | off)"
+        echo "  typewriter <on|off> Toggle authentic vintage typewriter mechanics"
+        echo "  list                List all available switches"
+        echo "  settings            Open Clackity settings window"
+        ;;
+    *)
+        echo "Unknown command: $CMD"
+        echo "Run 'clack help' for usage instructions."
+        exit 1
+        ;;
+esac

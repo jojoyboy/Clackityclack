@@ -55,6 +55,8 @@ $(APP_BUNDLE): $(OBJS) Resources/Info.plist
 	@cp -R Resources/SoundPacks $(RESOURCES_DIR)/ 2>/dev/null || true
 	@cp -R Resources/Previews $(RESOURCES_DIR)/ 2>/dev/null || true
 	@cp Resources/community_soundpacks.json $(RESOURCES_DIR)/ 2>/dev/null || true
+	@cp tools/clack $(MACOS_DIR)/clack && chmod +x $(MACOS_DIR)/clack
+	@cp tools/clack $(RESOURCES_DIR)/clack && chmod +x $(RESOURCES_DIR)/clack
 	@echo "==> Applying persistent identifier code signature..."
 	@codesign -s - --force --deep --identifier "com.jojoyboy.Clackity" -r='designated => identifier "com.jojoyboy.Clackity"' $(APP_BUNDLE)
 	@/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u $(APP_BUNDLE) 2>/dev/null || true

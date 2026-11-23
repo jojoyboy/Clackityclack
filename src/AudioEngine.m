@@ -7,6 +7,7 @@
     AVAudioEngine *_engine;
     AVAudioMixerNode *_mixerNode;
     AVAudioMixerNode *_subMixer;
+    AVAudioUnitReverb *_reverbNode;
     AVAudioUnitEQ *_eqNode;
     NSMutableArray<AVAudioPlayerNode *> *_playerNodes;
     NSUInteger _currentPlayerIndex;
@@ -17,6 +18,7 @@
     AVAudioPCMBuffer *_typewriterBellBuffer;
     AVAudioPCMBuffer *_typewriterReturnBuffer;
     AVAudioPCMBuffer *_typewriterRatchetBuffer;
+    AVAudioPCMBuffer *_springPingBuffer;
     NSInteger _currentLineCharCount;
     BOOL _marginBellFired;
     
@@ -57,6 +59,10 @@
             @"typewriterReturnGlideEnabled": @YES,
             @"typewriterMarginBellOnly": @YES,
             @"typewriterMarginLength": @72,
+            @"keyPitchRowMapping": @YES,
+            @"krytoxLube": @NO,
+            @"springPing": @NO,
+            @"roomAcousticPreset": @(0),
         }];
         _typewriterModeEnabled = [defs boolForKey:@"typewriterModeEnabled"];
         _typewriterBellEnabled = [defs boolForKey:@"typewriterBellEnabled"];
@@ -65,9 +71,15 @@
         _typewriterMarginBellOnly = [defs boolForKey:@"typewriterMarginBellOnly"];
         _typewriterMarginLength = [defs integerForKey:@"typewriterMarginLength"] ?: 72;
         
+        _keyPitchRowMappingEnabled = [defs boolForKey:@"keyPitchRowMapping"];
+        _krytoxLubeEnabled = [defs boolForKey:@"krytoxLube"];
+        _springPingEnabled = [defs boolForKey:@"springPing"];
+        _roomAcousticPreset = (ClackityRoomAcousticPreset)[defs integerForKey:@"roomAcousticPreset"];
+        
         _typewriterBellBuffer = [SoundSynthesizer typewriterMarginBellBuffer];
         _typewriterReturnBuffer = [SoundSynthesizer typewriterCarriageReturnBuffer];
         _typewriterRatchetBuffer = [SoundSynthesizer typewriterBackspaceRatchetBuffer];
+        _springPingBuffer = [SoundSynthesizer springPingBuffer];
         _currentLineCharCount = 0;
         _marginBellFired = NO;
         
@@ -89,8 +101,13 @@
     _subMixer = [[AVAudioMixerNode alloc] init];
     [_engine attachNode:_subMixer];
     
-    // Parametric Tone Filter: Thock (PE Foam) <---> Clack (Brass Plate)
-    _eqNode = [[AVAudioUnitEQ alloc] initWithNumberOfBands:2];
+    // Spatial Room Acoustics Reverb Unit
+    _reverbNode = [[AVAudioUnitReverb alloc] init];
+    [_engine attachNode:_reverbNode];
+    [self applyRoomAcousticPreset:_roomAcousticPreset];
+    
+    // Parametric Tone & Krytox Lube Filter (4-band CoreAudio DSP)
+    _eqNode = [[AVAudioUnitEQ alloc] initWithNumberOfBands:4];
     [_engine attachNode:_eqNode];
     
     AVAudioUnitEQFilterParameters *lowBand = _eqNode.bands[0];
@@ -105,13 +122,29 @@
     highBand.bandwidth = 1.0f;
     highBand.bypass = NO;
     
+    // Band 2: Krytox scratch filter (2.6 kHz peak attenuator)
+    AVAudioUnitEQFilterParameters *scratchBand = _eqNode.bands[2];
+    scratchBand.filterType = AVAudioUnitEQFilterTypeParametric;
+    scratchBand.frequency = 2600.0f;
+    scratchBand.bandwidth = 1.2f;
+    scratchBand.gain = 0.0f;
+    scratchBand.bypass = YES;
+    
+    // Band 3: Krytox low-pass ceiling filter
+    AVAudioUnitEQFilterParameters *cutoffBand = _eqNode.bands[3];
+    cutoffBand.filterType = AVAudioUnitEQFilterTypeLowPass;
+    cutoffBand.frequency = 7200.0f;
+    cutoffBand.bypass = YES;
+    
     [self applyToneBalance:_toneBalance];
+    [self applyKrytoxLube:_krytoxLubeEnabled];
     
     AVAudioFormat *stereoFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0 channels:2];
     AVAudioFormat *monoFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0 channels:1];
     
-    // Connect audio pipeline: subMixer -> eqNode -> mainMixerNode
-    [_engine connect:_subMixer to:_eqNode format:stereoFormat];
+    // Connect audio pipeline: subMixer -> reverbNode -> eqNode -> mixerNode
+    [_engine connect:_subMixer to:_reverbNode format:stereoFormat];
+    [_engine connect:_reverbNode to:_eqNode format:stereoFormat];
     [_engine connect:_eqNode to:_mixerNode format:stereoFormat];
     
     _playerNodes = [NSMutableArray arrayWithCapacity:VOICE_POOL_SIZE];
@@ -157,6 +190,79 @@
     }
 }
 
+- (void)setKrytoxLubeEnabled:(BOOL)krytoxLubeEnabled {
+    _krytoxLubeEnabled = krytoxLubeEnabled;
+    [self applyKrytoxLube:krytoxLubeEnabled];
+    [[NSUserDefaults standardUserDefaults] setBool:krytoxLubeEnabled forKey:@"krytoxLube"];
+}
+
+- (void)applyKrytoxLube:(BOOL)lubed {
+    if (!_eqNode || _eqNode.bands.count < 4) return;
+    
+    AVAudioUnitEQFilterParameters *scratchBand = _eqNode.bands[2];
+    AVAudioUnitEQFilterParameters *cutoffBand = _eqNode.bands[3];
+    
+    if (lubed) {
+        // Krytox GPL 205g0: Dampens friction scratch (-5.5dB at 2600 Hz) and rounds harsh high clatter
+        scratchBand.gain = -5.5f;
+        scratchBand.bypass = NO;
+        
+        cutoffBand.filterType = AVAudioUnitEQFilterTypeLowPass;
+        cutoffBand.frequency = 7200.0f;
+        cutoffBand.bypass = NO;
+    } else {
+        scratchBand.gain = 0.0f;
+        scratchBand.bypass = YES;
+        cutoffBand.bypass = YES;
+    }
+}
+
+- (void)setRoomAcousticPreset:(ClackityRoomAcousticPreset)roomAcousticPreset {
+    _roomAcousticPreset = roomAcousticPreset;
+    [self applyRoomAcousticPreset:roomAcousticPreset];
+    [[NSUserDefaults standardUserDefaults] setInteger:roomAcousticPreset forKey:@"roomAcousticPreset"];
+}
+
+- (void)applyRoomAcousticPreset:(ClackityRoomAcousticPreset)preset {
+    if (!_reverbNode) return;
+    
+    switch (preset) {
+        case ClackityRoomAcousticHardwoodDesk:
+            [_reverbNode loadFactoryPreset:AVAudioUnitReverbPresetSmallRoom];
+            _reverbNode.wetDryMix = 18.0f;
+            _reverbNode.bypass = NO;
+            break;
+            
+        case ClackityRoomAcousticStudioFoam:
+            [_reverbNode loadFactoryPreset:AVAudioUnitReverbPresetMediumChamber];
+            _reverbNode.wetDryMix = 28.0f;
+            _reverbNode.bypass = NO;
+            break;
+            
+        case ClackityRoomAcousticOpenLoft:
+            [_reverbNode loadFactoryPreset:AVAudioUnitReverbPresetLargeRoom];
+            _reverbNode.wetDryMix = 40.0f;
+            _reverbNode.bypass = NO;
+            break;
+            
+        case ClackityRoomAcousticDirect:
+        default:
+            _reverbNode.wetDryMix = 0.0f;
+            _reverbNode.bypass = YES;
+            break;
+    }
+}
+
+- (void)setKeyPitchRowMappingEnabled:(BOOL)keyPitchRowMappingEnabled {
+    _keyPitchRowMappingEnabled = keyPitchRowMappingEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:keyPitchRowMappingEnabled forKey:@"keyPitchRowMapping"];
+}
+
+- (void)setSpringPingEnabled:(BOOL)springPingEnabled {
+    _springPingEnabled = springPingEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:springPingEnabled forKey:@"springPing"];
+}
+
 - (void)handleEngineConfigurationChange:(NSNotification *)notification {
     dispatch_async(_audioQueue, ^{
         NSError *error = nil;
@@ -170,8 +276,11 @@
         [self->_engine disconnectNodeOutput:self->_eqNode];
         [self->_engine connect:self->_eqNode to:self->_mixerNode format:stereoFormat];
         
+        [self->_engine disconnectNodeOutput:self->_reverbNode];
+        [self->_engine connect:self->_reverbNode to:self->_eqNode format:stereoFormat];
+        
         [self->_engine disconnectNodeOutput:self->_subMixer];
-        [self->_engine connect:self->_subMixer to:self->_eqNode format:stereoFormat];
+        [self->_engine connect:self->_subMixer to:self->_reverbNode format:stereoFormat];
         
         for (AVAudioPlayerNode *player in self->_playerNodes) {
             [self->_engine disconnectNodeOutput:player];
@@ -305,6 +414,94 @@
     }
 }
 
+- (float)pitchMultiplierForKeyCode:(int64_t)keyCode {
+    if (!_keyPitchRowMappingEnabled) return 1.0f;
+    
+    switch (keyCode) {
+        // Row 0: Function & Esc keys (+8% crisp snap)
+        case 53: // Esc
+        case 122: case 120: case 99: case 118: case 96: case 97:
+        case 98: case 100: case 101: case 109: case 103: case 111:
+            return 1.08f;
+            
+        // Row 1: Number Row (`~` through `=`) (+5% higher pitch)
+        case 50: // `~
+        case 18: case 19: case 20: case 21: case 23: case 22:
+        case 26: case 28: case 25: case 29: case 27: case 24:
+            return 1.05f;
+            
+        // Row 2: Upper QWERTY Row (+2.5% slightly brighter)
+        case 48: // Tab
+        case 12: case 13: case 14: case 15: case 17: case 16:
+        case 32: case 34: case 31: case 35: case 33: case 30: case 42:
+            return 1.025f;
+            
+        // Row 3: Home ASDF Row (Reference 1.00x)
+        case 57: // CapsLock
+        case 0: case 1: case 2: case 3: case 5: case 4:
+        case 38: case 40: case 37: case 41: case 39: case 36:
+            return 1.00f;
+            
+        // Row 4: Lower ZXCV Row (-3.5% deeper thock)
+        case 56: case 60: // Shift
+        case 6: case 7: case 8: case 9: case 11:
+        case 45: case 46: case 43: case 47: case 44:
+            return 0.965f;
+            
+        // Row 5: Bottom Modifier & Spacebar Row (-8% deep cavity resonance)
+        case 59: case 58: case 55: case 49: case 54: case 61: // Ctrl, Opt, Cmd, Space
+        case 123: case 124: case 125: case 126: // Arrows
+            return 0.92f;
+            
+        default:
+            return 1.00f;
+    }
+}
+
+- (AVAudioPCMBuffer *)pitchShiftBuffer:(AVAudioPCMBuffer *)srcBuffer ratio:(float)ratio {
+    if (fabsf(ratio - 1.0f) < 0.005f || !srcBuffer) return srcBuffer;
+    
+    AVAudioFrameCount srcFrames = srcBuffer.frameLength;
+    if (srcFrames == 0) return srcBuffer;
+    
+    AVAudioFrameCount destFrames = (AVAudioFrameCount)roundf((float)srcFrames / ratio);
+    if (destFrames == 0) return srcBuffer;
+    
+    AVAudioFormat *format = srcBuffer.format;
+    AVAudioPCMBuffer *destBuffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:format frameCapacity:destFrames];
+    destBuffer.frameLength = destFrames;
+    
+    float *src = srcBuffer.floatChannelData[0];
+    float *dest = destBuffer.floatChannelData[0];
+    
+    for (AVAudioFrameCount i = 0; i < destFrames; i++) {
+        float srcPos = (float)i * ratio;
+        AVAudioFrameCount idx0 = (AVAudioFrameCount)srcPos;
+        if (idx0 >= srcFrames - 1) {
+            dest[i] = src[srcFrames - 1];
+        } else {
+            float frac = srcPos - (float)idx0;
+            dest[i] = src[idx0] + frac * (src[idx0 + 1] - src[idx0]);
+        }
+    }
+    
+    return destBuffer;
+}
+
+- (void)playSpringPing {
+    if (!_springPingBuffer || _isMeetingMuted) return;
+    dispatch_async(_audioQueue, ^{
+        AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
+        self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
+        player.pan = 0.0f;
+        player.volume = self->_masterVolume * 0.40f;
+        [player scheduleBuffer:self->_springPingBuffer atTime:nil options:AVAudioPlayerNodeBufferInterrupts completionHandler:nil];
+        if (!player.isPlaying) {
+            [player play];
+        }
+    });
+}
+
 - (void)playBufferWithCategory:(ClackityKeyCategory)category keyCode:(int64_t)keyCode isKeyUp:(BOOL)isKeyUp {
     if (_isMeetingMuted) return;
     if (!_keySoundsEnabled && category <= ClackityKeyCategoryModifier) return;
@@ -315,6 +512,7 @@
     NSString *cacheKey = [NSString stringWithFormat:@"%ld_%d_%d", (long)category, isKeyUp ? 1 : 0, variant];
     
     float pan = _spatialAudioEnabled ? [self panForKeyCode:keyCode] : 0.0f;
+    float rowPitchRatio = (category <= ClackityKeyCategoryModifier) ? [self pitchMultiplierForKeyCode:keyCode] : 1.0f;
     
     // Dynamic Typing Velocity & Strike Momentum
     float velocityMultiplier = 1.0f;
@@ -349,6 +547,11 @@
             buffer = self->_bufferCache[cacheKey];
         }
         if (!buffer) return;
+        
+        // Apply key-pitch row mapping (resample buffer to geometric row pitch)
+        if (fabsf(rowPitchRatio - 1.0f) > 0.005f) {
+            buffer = [self pitchShiftBuffer:buffer ratio:rowPitchRatio];
+        }
         
         // Grab next player in pool
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
@@ -449,6 +652,11 @@
 
 - (void)playKeyWithCategory:(ClackityKeyCategory)category keyCode:(int64_t)keyCode isKeyUp:(BOOL)isKeyUp {
     [self playBufferWithCategory:category keyCode:keyCode isKeyUp:isKeyUp];
+    
+    // Helical Spring Ping Resonance on Switch Release (KeyUp)
+    if (isKeyUp && _springPingEnabled && !_isMeetingMuted && _keySoundsEnabled && category <= ClackityKeyCategoryModifier) {
+        [self playSpringPing];
+    }
     
     // Authentic Vintage Typewriter Mechanics
     if (_typewriterModeEnabled && !isKeyUp && !_isMeetingMuted && _keySoundsEnabled) {
