@@ -601,6 +601,7 @@
     card.layer.borderWidth = 0.5;
     card.layer.borderColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.12].CGColor;
     card.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.20 alpha:0.28].CGColor;
+    card.autoresizingMask = NSViewWidthSizable;
     return card;
 }
 
@@ -932,42 +933,38 @@
 #pragma mark - Section 2: Trackpad Haptics
 
 - (FlippedView *)buildHapticsView {
-    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, 400)];
+    CGFloat totalHeight = 440.0;
+    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, totalHeight)];
     container.autoresizingMask = NSViewWidthSizable;
     CGFloat cardWidth = 495.0;
     CGFloat x = 20.0;
     
-    // 1. Force Touch Taptic Engine Kick Card (Y = 18, height = 185)
-    FlippedCardView *hapticCard = [self cardContainerWithFrame:NSMakeRect(x, 18, cardWidth, 185)];
+    // 1. Force Touch Taptic Engine Kick Card (Y = 18, height = 250)
+    FlippedCardView *hapticCard = [self cardContainerWithFrame:NSMakeRect(x, 18, cardWidth, 250)];
+    hapticCard.autoresizingMask = NSViewWidthSizable;
     [container addSubview:hapticCard];
     
-    NSTextField *hapticTitle = [self labelWithText:@"MacBook Trackpad Haptics (Force Touch Taptic Kick)" bold:YES fontSize:13];
-    hapticTitle.frame = NSMakeRect(16, 14, 400, 18);
+    NSTextField *hapticTitle = [self labelWithText:@"MacBook Trackpad Haptics (Force Touch Taptic Kick)" bold:YES fontSize:13.5];
+    hapticTitle.frame = NSMakeRect(18, 16, 420, 18);
     [hapticCard addSubview:hapticTitle];
     
     NSTextField *hapticDesc = [self labelWithText:@"Delivers microsecond mechanical vibration under your palms as you type or click." bold:NO fontSize:11];
     hapticDesc.textColor = [NSColor secondaryLabelColor];
-    hapticDesc.frame = NSMakeRect(18, 36, 450, 16);
+    hapticDesc.frame = NSMakeRect(18, 38, 450, 16);
     hapticDesc.autoresizingMask = NSViewWidthSizable;
     [hapticCard addSubview:hapticDesc];
     
     self.hapticEnabledCheck = [self checkboxWithTitle:@"Enable Trackpad Haptic Feedback (Mechanical Deck Resonance)" action:@selector(hapticEnabledToggled:)];
-    self.hapticEnabledCheck.frame = NSMakeRect(18, 62, 450, 20);
+    self.hapticEnabledCheck.frame = NSMakeRect(18, 66, 450, 20);
     self.hapticEnabledCheck.autoresizingMask = NSViewWidthSizable;
     [hapticCard addSubview:self.hapticEnabledCheck];
     
-    NSTextField *hapticIntLabel = [self labelWithText:@"Tactile Profile:" bold:NO fontSize:11.5];
-    hapticIntLabel.frame = NSMakeRect(20, 95, 90, 18);
+    // Tactile Profile Header & Test Button
+    NSTextField *hapticIntLabel = [self labelWithText:@"Tactile Feedback Profile:" bold:YES fontSize:11.5];
+    hapticIntLabel.frame = NSMakeRect(20, 102, 200, 18);
     [hapticCard addSubview:hapticIntLabel];
     
-    self.hapticSegmentControl = [NSSegmentedControl segmentedControlWithLabels:@[@"Subtle (Soft)", @"Crisp (Tactile)", @"Heavy (Deep)"]
-                                                                 trackingMode:NSSegmentSwitchTrackingSelectOne
-                                                                       target:self
-                                                                       action:@selector(hapticSegmentChanged:)];
-    self.hapticSegmentControl.frame = NSMakeRect(114, 91, 230, 26);
-    [hapticCard addSubview:self.hapticSegmentControl];
-    
-    self.testHapticBtn = [[NSButton alloc] initWithFrame:NSMakeRect(352, 91, 124, 26)];
+    self.testHapticBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 130, 97, 110, 26)];
     self.testHapticBtn.title = @"Test Haptic";
     self.testHapticBtn.bezelStyle = NSBezelStyleRounded;
     self.testHapticBtn.target = self;
@@ -975,42 +972,59 @@
     self.testHapticBtn.autoresizingMask = NSViewMinXMargin;
     [hapticCard addSubview:self.testHapticBtn];
     
+    // Segmented Control on its own dedicated full-width row (Never truncates)
+    self.hapticSegmentControl = [NSSegmentedControl segmentedControlWithLabels:@[@"Subtle (Soft)", @"Crisp (Tactile)", @"Heavy (Deep)"]
+                                                                 trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                                       target:self
+                                                                       action:@selector(hapticSegmentChanged:)];
+    self.hapticSegmentControl.frame = NSMakeRect(18, 126, cardWidth - 36, 28);
+    self.hapticSegmentControl.autoresizingMask = NSViewWidthSizable;
+    [hapticCard addSubview:self.hapticSegmentControl];
+    
+    NSTextField *hapticTip = [self labelWithText:@"💡 Click any profile above to instantly actuate a tactile preview kick under your trackpad." bold:NO fontSize:10.5];
+    hapticTip.textColor = [NSColor secondaryLabelColor];
+    hapticTip.frame = NSMakeRect(20, 160, cardWidth - 40, 16);
+    hapticTip.autoresizingMask = NSViewWidthSizable;
+    [hapticCard addSubview:hapticTip];
+    
     self.hapticOnKeyCheck = [self checkboxWithTitle:@"Actuate on Keystroke (simulates mechanical plate vibration)" action:@selector(hapticOnKeyToggled:)];
-    self.hapticOnKeyCheck.frame = NSMakeRect(20, 128, 430, 20);
+    self.hapticOnKeyCheck.frame = NSMakeRect(18, 188, 450, 20);
     self.hapticOnKeyCheck.autoresizingMask = NSViewWidthSizable;
     [hapticCard addSubview:self.hapticOnKeyCheck];
     
     self.hapticOnMouseCheck = [self checkboxWithTitle:@"Actuate on Mouse Click" action:@selector(hapticOnMouseToggled:)];
-    self.hapticOnMouseCheck.frame = NSMakeRect(20, 152, 430, 20);
+    self.hapticOnMouseCheck.frame = NSMakeRect(18, 214, 450, 20);
     self.hapticOnMouseCheck.autoresizingMask = NSViewWidthSizable;
     [hapticCard addSubview:self.hapticOnMouseCheck];
     
-    // 2. Trackpad Force-Click Snap (Y = 221, height = 115)
-    FlippedCardView *forceCard = [self cardContainerWithFrame:NSMakeRect(x, 221, cardWidth, 115)];
+    // 2. Trackpad Force-Click Snap (Y = 286, height = 120)
+    FlippedCardView *forceCard = [self cardContainerWithFrame:NSMakeRect(x, 286, cardWidth, 120)];
+    forceCard.autoresizingMask = NSViewWidthSizable;
     [container addSubview:forceCard];
     
-    NSTextField *forceTitle = [self labelWithText:@"Trackpad Force-Click Snap" bold:YES fontSize:13];
-    forceTitle.frame = NSMakeRect(16, 14, 300, 18);
+    NSTextField *forceTitle = [self labelWithText:@"Trackpad Force-Click Snap" bold:YES fontSize:13.5];
+    forceTitle.frame = NSMakeRect(18, 16, 300, 18);
     [forceCard addSubview:forceTitle];
     
     NSTextField *forceDesc = [self labelWithText:@"Provides tactile acoustic pop and feedback when deep-pressing the Force Touch trackpad." bold:NO fontSize:11];
     forceDesc.textColor = [NSColor secondaryLabelColor];
-    forceDesc.frame = NSMakeRect(18, 36, 450, 16);
+    forceDesc.frame = NSMakeRect(18, 38, 450, 16);
     forceDesc.autoresizingMask = NSViewWidthSizable;
     [forceCard addSubview:forceDesc];
     
     self.forceClickCheck = [self checkboxWithTitle:@"Force-Click Acoustic Snap (deep press audio feedback)" action:@selector(forceClickToggled:)];
-    self.forceClickCheck.frame = NSMakeRect(18, 64, 450, 20);
+    self.forceClickCheck.frame = NSMakeRect(18, 66, 450, 20);
     self.forceClickCheck.autoresizingMask = NSViewWidthSizable;
     [forceCard addSubview:self.forceClickCheck];
     
     BOOL hasForceTouch = [HapticEngine isForceTouchHardwareAvailable];
     NSTextField *hwBadge = [self labelWithText:hasForceTouch ? @"✅ Apple Force Touch Hardware: Active & Ready" : @"ℹ️ No Force Touch hardware detected on this display" bold:NO fontSize:11];
     hwBadge.textColor = hasForceTouch ? [NSColor systemGreenColor] : [NSColor secondaryLabelColor];
-    hwBadge.frame = NSMakeRect(20, 88, 430, 16);
+    hwBadge.frame = NSMakeRect(20, 92, 430, 16);
     hwBadge.autoresizingMask = NSViewWidthSizable;
     [forceCard addSubview:hwBadge];
     
+    container.frame = NSMakeRect(0, 0, 535, 430);
     return container;
 }
 

@@ -3,7 +3,7 @@ CFLAGS = -fobjc-arc -O2 -Wall -Wno-deprecated-declarations -mmacosx-version-min=
 FRAMEWORKS = -framework Cocoa -framework AVFoundation -framework AudioToolbox -framework QuartzCore -framework ApplicationServices -framework ServiceManagement -framework Carbon
 
 APP_NAME = Clackity
-VERSION = 1.0.0
+VERSION = 1.0.1
 BUILD_DIR = build.noindex
 APP_BUNDLE = $(BUILD_DIR)/$(APP_NAME).app
 CONTENTS_DIR = $(APP_BUNDLE)/Contents
