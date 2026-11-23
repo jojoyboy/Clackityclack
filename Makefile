@@ -20,6 +20,7 @@ SRCS = src/main.m \
        src/RippleOverlay.m \
        src/MenuBarController.m \
        src/UpdateManager.m \
+       src/HapticEngine.m \
        src/SettingsWindowController.m
 
 OBJS = $(patsubst src/%.m, $(BUILD_DIR)/obj/%.o, $(SRCS))

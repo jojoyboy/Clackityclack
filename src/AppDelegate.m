@@ -5,6 +5,7 @@
 #import "MenuBarController.h"
 #import "UpdateManager.h"
 #import "SettingsWindowController.h"
+#import "HapticEngine.h"
 #import <mach/mach_time.h>
 
 @interface AppDelegate () {
@@ -243,6 +244,10 @@
 - (void)inputMonitorDidDetectKeyWithCategory:(ClackityKeyCategory)category keyCode:(int64_t)keyCode isKeyUp:(BOOL)isKeyUp {
     [[AudioEngine sharedEngine] playKeyWithCategory:category keyCode:keyCode isKeyUp:isKeyUp];
     
+    if (!isKeyUp) {
+        [[HapticEngine sharedEngine] triggerKeyHaptic];
+    }
+    
     // Keystroke Counter & WPM calculation (KeyDown only)
     if (!isKeyUp && category <= ClackityKeyCategoryModifier) {
         _sessionClackCount++;
@@ -296,12 +301,14 @@
     [[AudioEngine sharedEngine] playMouseClick:isRightClick isUp:isUp];
     
     if (!isUp) {
+        [[HapticEngine sharedEngine] triggerMouseHaptic];
         [[RippleOverlay sharedOverlay] showRippleAtScreenPoint:screenPoint isRightClick:isRightClick];
     }
 }
 
 - (void)inputMonitorDidDetectForceClickAtPoint:(CGPoint)screenPoint {
     [[AudioEngine sharedEngine] playForceClickSound];
+    [[HapticEngine sharedEngine] triggerMouseHaptic];
     [[RippleOverlay sharedOverlay] showRippleAtScreenPoint:screenPoint isRightClick:YES];
 }
 

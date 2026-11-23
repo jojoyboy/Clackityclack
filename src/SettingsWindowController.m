@@ -6,6 +6,7 @@
 #import "UpdateManager.h"
 #import "AppDelegate.h"
 #import "MenuBarController.h"
+#import "HapticEngine.h"
 #import <ServiceManagement/ServiceManagement.h>
 
 #pragma mark - Flipped Views for Natural Top-Down Layout
@@ -337,7 +338,6 @@
 @property (nonatomic, strong) NSTextField *toneLowDbLabel;
 @property (nonatomic, strong) NSTextField *toneHighDbLabel;
 @property (nonatomic, strong) NSButton *velocityDynamicsCheck;
-@property (nonatomic, strong) NSButton *forceClickCheck;
 @property (nonatomic, strong) NSButton *secureInputCheck;
 @property (nonatomic, strong) NSButton *meetingMuteCheck;
 @property (nonatomic, strong) NSButton *spatialAudioCheck;
@@ -346,6 +346,15 @@
 @property (nonatomic, strong) NSButton *keyUpCheck;
 @property (nonatomic, strong) NSButton *mouseClickCheck;
 @property (nonatomic, strong) NSButton *mouseScrollCheck;
+
+// Section 2: Haptics & Feedback
+@property (nonatomic, strong) FlippedView *hapticsSectionView;
+@property (nonatomic, strong) NSButton *hapticEnabledCheck;
+@property (nonatomic, strong) NSSegmentedControl *hapticSegmentControl;
+@property (nonatomic, strong) NSButton *hapticOnKeyCheck;
+@property (nonatomic, strong) NSButton *hapticOnMouseCheck;
+@property (nonatomic, strong) NSButton *testHapticBtn;
+@property (nonatomic, strong) NSButton *forceClickCheck;
 
 // Section 2: Click Visuals
 @property (nonatomic, strong) FlippedView *visualsSectionView;
@@ -384,10 +393,11 @@
 }
 
 - (instancetype)init {
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 750, 580)
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)
                                                    styleMask:(NSWindowStyleMaskTitled |
                                                               NSWindowStyleMaskClosable |
                                                               NSWindowStyleMaskMiniaturizable |
+                                                              NSWindowStyleMaskResizable |
                                                               NSWindowStyleMaskFullSizeContentView)
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
@@ -395,6 +405,7 @@
     window.titlebarAppearsTransparent = YES;
     window.titleVisibility = NSWindowTitleHidden;
     window.releasedWhenClosed = NO;
+    window.minSize = NSMakeSize(720, 500);
     [window center];
     
     self = [super initWithWindow:window];
@@ -416,8 +427,8 @@
     NSView *root = self.window.contentView;
     root.wantsLayer = YES;
     
-    CGFloat winWidth = 750.0;
-    CGFloat winHeight = 580.0;
+    CGFloat winWidth = 800.0;
+    CGFloat winHeight = 600.0;
     CGFloat sidebarWidth = 205.0;
     CGFloat detailWidth = winWidth - sidebarWidth;
     
@@ -437,7 +448,7 @@
     divider.borderWidth = 0.5;
     divider.borderColor = [NSColor separatorColor];
     divider.fillColor = [NSColor separatorColor];
-    divider.autoresizingMask = NSViewHeightSizable;
+    divider.autoresizingMask = NSViewHeightSizable | NSViewMaxXMargin;
     [root addSubview:divider];
     
     // 3. Detail Canvas (Window Background Material)
@@ -451,6 +462,7 @@
     // Detail Header Title (Pinned cleanly at the top, consistent Apple HIG window title)
     self.detailHeaderTitle = [self labelWithText:@"Mechanical Switches" bold:YES fontSize:17];
     self.detailHeaderTitle.frame = NSMakeRect(24, winHeight - 48, detailWidth - 48, 26);
+    self.detailHeaderTitle.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
     [self.detailContainerView addSubview:self.detailHeaderTitle];
     
     // Scrollable Detail Canvas (Fills rest of area cleanly)
@@ -465,6 +477,7 @@
     // Prebuild Detail Views with Flipped Coordinates
     self.switchesSectionView = [self buildSwitchesView];
     self.acousticsSectionView = [self buildAcousticsView];
+    self.hapticsSectionView = [self buildHapticsView];
     self.visualsSectionView = [self buildVisualsView];
     self.storeSectionView = [self buildCommunityPacksView];
     self.generalSectionView = [self buildGeneralView];
@@ -482,6 +495,7 @@
     NSArray *items = @[
         @{@"title": @"Switches", @"symbol": @"headphones"},
         @{@"title": @"Acoustics & EQ", @"symbol": @"slider.vertical.3"},
+        @{@"title": @"Haptics", @"symbol": @"hand.tap"},
         @{@"title": @"Click Effects", @"symbol": @"cursorarrow.rays"},
         @{@"title": @"Sound Store", @"symbol": @"shippingbox"},
         @{@"title": @"General", @"symbol": @"gearshape"}
@@ -505,6 +519,7 @@
     
     // Bottom Odometer Pill
     FlippedCardView *statsBox = [self cardContainerWithFrame:NSMakeRect(12, 470, w - 24, 52)];
+    statsBox.autoresizingMask = NSViewMinYMargin | NSViewWidthSizable;
     [self.sidebarView addSubview:statsBox];
     
     self.sidebarOdometerLabel = [self labelWithText:@"⚡ 0 clacks · 0 wpm" bold:YES fontSize:11];
@@ -523,6 +538,7 @@
     privTag.textColor = [NSColor tertiaryLabelColor];
     privTag.alignment = NSTextAlignmentCenter;
     privTag.frame = NSMakeRect(10, 532, w - 20, 16);
+    privTag.autoresizingMask = NSViewMinYMargin | NSViewWidthSizable;
     [self.sidebarView addSubview:privTag];
 }
 
@@ -549,14 +565,18 @@
             title = @"Acoustics & Equalizer";
             break;
         case 2:
+            targetView = self.hapticsSectionView;
+            title = @"Trackpad Haptics & Feedback";
+            break;
+        case 3:
             targetView = self.visualsSectionView;
             title = @"Cursor Effects";
             break;
-        case 3:
+        case 4:
             targetView = self.storeSectionView;
             title = @"Community Sound Packs";
             break;
-        case 4:
+        case 5:
             targetView = self.generalSectionView;
             title = @"General Preferences";
             break;
@@ -792,115 +812,204 @@
 #pragma mark - Section 1: Acoustics & EQ
 
 - (FlippedView *)buildAcousticsView {
-    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, 600)];
+    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, 560)];
+    container.autoresizingMask = NSViewWidthSizable;
     CGFloat cardWidth = 495.0;
     CGFloat x = 20.0;
     
-    // 1. Hardware Tone Filter EQ Card (Y = 15, height = 135)
-    FlippedCardView *eqCard = [self cardContainerWithFrame:NSMakeRect(x, 15, cardWidth, 135)];
+    // 1. Hardware Tone Filter EQ Card (Y = 18, height = 145)
+    FlippedCardView *eqCard = [self cardContainerWithFrame:NSMakeRect(x, 18, cardWidth, 145)];
     [container addSubview:eqCard];
     
     NSTextField *eqTitle = [self labelWithText:@"Hardware Tone Balance (CoreAudio Parametric EQ)" bold:YES fontSize:13];
     eqTitle.frame = NSMakeRect(16, 14, 400, 18);
     [eqCard addSubview:eqTitle];
     
-    self.toneSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(16, 40, 360, 24)];
+    self.toneSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(16, 42, 360, 24)];
     self.toneSlider.minValue = -1.0;
     self.toneSlider.maxValue = 1.0;
     self.toneSlider.continuous = YES;
     self.toneSlider.target = self;
     self.toneSlider.action = @selector(toneSliderChanged:);
+    self.toneSlider.autoresizingMask = NSViewWidthSizable;
     [eqCard addSubview:self.toneSlider];
     
     self.toneLabel = [self labelWithText:@"Natural" bold:YES fontSize:12];
-    self.toneLabel.frame = NSMakeRect(386, 42, 85, 18);
+    self.toneLabel.frame = NSMakeRect(386, 44, 85, 18);
+    self.toneLabel.autoresizingMask = NSViewMinXMargin;
     [eqCard addSubview:self.toneLabel];
     
     NSTextField *sliderHint = [self labelWithText:@"◄ PE Foam (Deep Thock)               Balanced               Brass Plate (Crisp Clack) ►" bold:NO fontSize:10];
     sliderHint.textColor = [NSColor secondaryLabelColor];
-    sliderHint.frame = NSMakeRect(18, 68, 450, 15);
+    sliderHint.frame = NSMakeRect(18, 72, 450, 15);
+    sliderHint.autoresizingMask = NSViewWidthSizable;
     [eqCard addSubview:sliderHint];
     
     self.toneLowDbLabel = [self labelWithText:@"Low Shelf (320 Hz): 0.0 dB" bold:NO fontSize:11];
     self.toneLowDbLabel.textColor = [NSColor secondaryLabelColor];
-    self.toneLowDbLabel.frame = NSMakeRect(18, 88, 210, 16);
+    self.toneLowDbLabel.frame = NSMakeRect(18, 94, 210, 16);
     [eqCard addSubview:self.toneLowDbLabel];
     
     self.toneHighDbLabel = [self labelWithText:@"Actuation Snap (3.8 kHz): 0.0 dB" bold:NO fontSize:11];
     self.toneHighDbLabel.textColor = [NSColor secondaryLabelColor];
-    self.toneHighDbLabel.frame = NSMakeRect(240, 88, 220, 16);
+    self.toneHighDbLabel.frame = NSMakeRect(240, 94, 220, 16);
     [eqCard addSubview:self.toneHighDbLabel];
     
     NSTextField *eqDesc = [self labelWithText:@"Real-time low-shelf & high-shelf CoreAudio DSP filters acoustic response before output." bold:NO fontSize:10];
     eqDesc.textColor = [NSColor tertiaryLabelColor];
-    eqDesc.frame = NSMakeRect(18, 110, 450, 16);
+    eqDesc.frame = NSMakeRect(18, 118, 450, 16);
+    eqDesc.autoresizingMask = NSViewWidthSizable;
     [eqCard addSubview:eqDesc];
     
-    // 2. Dynamic Strike Velocity & Force Click (Y = 162, height = 95)
-    FlippedCardView *dynCard = [self cardContainerWithFrame:NSMakeRect(x, 162, cardWidth, 95)];
+    // 2. Dynamic Strike Velocity & Spatial Audio (Y = 181, height = 115)
+    FlippedCardView *dynCard = [self cardContainerWithFrame:NSMakeRect(x, 181, cardWidth, 115)];
     [container addSubview:dynCard];
     
-    NSTextField *dynTitle = [self labelWithText:@"Dynamics & Tactile Feedback" bold:YES fontSize:13];
-    dynTitle.frame = NSMakeRect(16, 14, 300, 18);
+    NSTextField *dynTitle = [self labelWithText:@"Dynamics & Spatial Stereo Acoustics" bold:YES fontSize:13];
+    dynTitle.frame = NSMakeRect(16, 14, 350, 18);
     [dynCard addSubview:dynTitle];
     
-    self.velocityDynamicsCheck = [self checkboxWithTitle:@"Dynamic Keystroke Velocity (punchier bottom-out on rapid bursts)" action:@selector(velocityDynamicsToggled:)];
+    self.velocityDynamicsCheck = [self checkboxWithTitle:@"Dynamic Keystroke Velocity (punchier bottom-out on rapid typing bursts)" action:@selector(velocityDynamicsToggled:)];
     self.velocityDynamicsCheck.frame = NSMakeRect(18, 38, 450, 20);
+    self.velocityDynamicsCheck.autoresizingMask = NSViewWidthSizable;
     [dynCard addSubview:self.velocityDynamicsCheck];
     
-    self.forceClickCheck = [self checkboxWithTitle:@"Trackpad Force-Click Snap (tactile acoustic pop on deep press)" action:@selector(forceClickToggled:)];
-    self.forceClickCheck.frame = NSMakeRect(18, 64, 450, 20);
-    [dynCard addSubview:self.forceClickCheck];
+    self.spatialAudioCheck = [self checkboxWithTitle:@"Spatial Stereo Audio (pans keystrokes across headphones by key position)" action:@selector(spatialAudioToggled:)];
+    self.spatialAudioCheck.frame = NSMakeRect(18, 62, 450, 20);
+    self.spatialAudioCheck.autoresizingMask = NSViewWidthSizable;
+    [dynCard addSubview:self.spatialAudioCheck];
     
-    // 3. Audio Triggers & Privacy (Y = 269, height = 265)
-    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 269, cardWidth, 265)];
-    [container addSubview:trigCard];
+    self.muteModifiersCheck = [self checkboxWithTitle:@"Mute modifier keys (Shift, Cmd, Opt, Ctrl)" action:@selector(muteModifiersToggled:)];
+    self.muteModifiersCheck.frame = NSMakeRect(18, 86, 450, 20);
+    self.muteModifiersCheck.autoresizingMask = NSViewWidthSizable;
+    [dynCard addSubview:self.muteModifiersCheck];
     
-    NSTextField *trigTitle = [self labelWithText:@"Privacy & Trigger Suppression" bold:YES fontSize:13];
-    trigTitle.frame = NSMakeRect(16, 14, 300, 18);
-    [trigCard addSubview:trigTitle];
+    // 3. Privacy & Meeting Intelligence (Y = 314, height = 85)
+    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 314, cardWidth, 85)];
+    [container addSubview:privCard];
+    
+    NSTextField *privTitle = [self labelWithText:@"Privacy & Trigger Suppression" bold:YES fontSize:13];
+    privTitle.frame = NSMakeRect(16, 14, 300, 18);
+    [privCard addSubview:privTitle];
     
     self.secureInputCheck = [self checkboxWithTitle:@"Auto-mute in password fields (macOS Secure Event Input)" action:@selector(secureInputToggled:)];
     self.secureInputCheck.frame = NSMakeRect(18, 38, 450, 20);
-    [trigCard addSubview:self.secureInputCheck];
+    self.secureInputCheck.autoresizingMask = NSViewWidthSizable;
+    [privCard addSubview:self.secureInputCheck];
     
     self.meetingMuteCheck = [self checkboxWithTitle:@"Auto-mute in meetings (Zoom, Teams, Google Meet, FaceTime...)" action:@selector(meetingMuteToggled:)];
-    self.meetingMuteCheck.frame = NSMakeRect(18, 66, 450, 20);
-    [trigCard addSubview:self.meetingMuteCheck];
+    self.meetingMuteCheck.frame = NSMakeRect(18, 60, 450, 20);
+    self.meetingMuteCheck.autoresizingMask = NSViewWidthSizable;
+    [privCard addSubview:self.meetingMuteCheck];
     
-    self.spatialAudioCheck = [self checkboxWithTitle:@"Spatial Stereo Audio (pans keystrokes across headphones)" action:@selector(spatialAudioToggled:)];
-    self.spatialAudioCheck.frame = NSMakeRect(18, 94, 450, 20);
-    [trigCard addSubview:self.spatialAudioCheck];
+    // 4. Acoustic Trigger Controls (Y = 417, height = 115)
+    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 417, cardWidth, 115)];
+    [container addSubview:trigCard];
     
-    self.muteModifiersCheck = [self checkboxWithTitle:@"Mute modifier keys (Shift, Cmd, Opt, Ctrl)" action:@selector(muteModifiersToggled:)];
-    self.muteModifiersCheck.frame = NSMakeRect(18, 122, 450, 20);
-    [trigCard addSubview:self.muteModifiersCheck];
-    
-    NSBox *sep = [[NSBox alloc] initWithFrame:NSMakeRect(18, 150, cardWidth - 36, 0.5)];
-    sep.boxType = NSBoxCustom;
-    sep.borderWidth = 0.5;
-    sep.borderColor = [NSColor separatorColor];
-    [trigCard addSubview:sep];
-    
-    NSTextField *subTitle = [self labelWithText:@"Detailed Key & Mouse Triggers:" bold:YES fontSize:12];
-    subTitle.frame = NSMakeRect(18, 160, 250, 18);
-    [trigCard addSubview:subTitle];
+    NSTextField *trigTitle = [self labelWithText:@"Detailed Audio Triggers" bold:YES fontSize:13];
+    trigTitle.frame = NSMakeRect(16, 14, 300, 18);
+    [trigCard addSubview:trigTitle];
     
     self.keyDownCheck = [self checkboxWithTitle:@"Keystroke Down sound" action:@selector(keyDownToggled:)];
-    self.keyDownCheck.frame = NSMakeRect(22, 186, 200, 20);
+    self.keyDownCheck.frame = NSMakeRect(22, 42, 200, 20);
     [trigCard addSubview:self.keyDownCheck];
     
     self.keyUpCheck = [self checkboxWithTitle:@"Keystroke Up sound" action:@selector(keyUpToggled:)];
-    self.keyUpCheck.frame = NSMakeRect(240, 186, 200, 20);
+    self.keyUpCheck.frame = NSMakeRect(240, 42, 200, 20);
     [trigCard addSubview:self.keyUpCheck];
     
     self.mouseClickCheck = [self checkboxWithTitle:@"Mouse click sounds" action:@selector(mouseClickToggled:)];
-    self.mouseClickCheck.frame = NSMakeRect(22, 214, 200, 20);
+    self.mouseClickCheck.frame = NSMakeRect(22, 74, 200, 20);
     [trigCard addSubview:self.mouseClickCheck];
     
     self.mouseScrollCheck = [self checkboxWithTitle:@"Mouse scroll clicks" action:@selector(mouseScrollToggled:)];
-    self.mouseScrollCheck.frame = NSMakeRect(240, 214, 200, 20);
+    self.mouseScrollCheck.frame = NSMakeRect(240, 74, 200, 20);
     [trigCard addSubview:self.mouseScrollCheck];
+    
+    return container;
+}
+
+#pragma mark - Section 2: Trackpad Haptics
+
+- (FlippedView *)buildHapticsView {
+    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, 400)];
+    container.autoresizingMask = NSViewWidthSizable;
+    CGFloat cardWidth = 495.0;
+    CGFloat x = 20.0;
+    
+    // 1. Force Touch Taptic Engine Kick Card (Y = 18, height = 185)
+    FlippedCardView *hapticCard = [self cardContainerWithFrame:NSMakeRect(x, 18, cardWidth, 185)];
+    [container addSubview:hapticCard];
+    
+    NSTextField *hapticTitle = [self labelWithText:@"MacBook Trackpad Haptics (Force Touch Taptic Kick)" bold:YES fontSize:13];
+    hapticTitle.frame = NSMakeRect(16, 14, 400, 18);
+    [hapticCard addSubview:hapticTitle];
+    
+    NSTextField *hapticDesc = [self labelWithText:@"Delivers microsecond mechanical vibration under your palms as you type or click." bold:NO fontSize:11];
+    hapticDesc.textColor = [NSColor secondaryLabelColor];
+    hapticDesc.frame = NSMakeRect(18, 36, 450, 16);
+    hapticDesc.autoresizingMask = NSViewWidthSizable;
+    [hapticCard addSubview:hapticDesc];
+    
+    self.hapticEnabledCheck = [self checkboxWithTitle:@"Enable Trackpad Haptic Feedback (Mechanical Deck Resonance)" action:@selector(hapticEnabledToggled:)];
+    self.hapticEnabledCheck.frame = NSMakeRect(18, 62, 450, 20);
+    self.hapticEnabledCheck.autoresizingMask = NSViewWidthSizable;
+    [hapticCard addSubview:self.hapticEnabledCheck];
+    
+    NSTextField *hapticIntLabel = [self labelWithText:@"Tactile Profile:" bold:NO fontSize:11.5];
+    hapticIntLabel.frame = NSMakeRect(20, 95, 90, 18);
+    [hapticCard addSubview:hapticIntLabel];
+    
+    self.hapticSegmentControl = [NSSegmentedControl segmentedControlWithLabels:@[@"Subtle (Soft)", @"Crisp (Tactile)", @"Heavy (Deep)"]
+                                                                 trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                                       target:self
+                                                                       action:@selector(hapticSegmentChanged:)];
+    self.hapticSegmentControl.frame = NSMakeRect(114, 91, 230, 26);
+    [hapticCard addSubview:self.hapticSegmentControl];
+    
+    self.testHapticBtn = [[NSButton alloc] initWithFrame:NSMakeRect(352, 91, 124, 26)];
+    self.testHapticBtn.title = @"Test Haptic";
+    self.testHapticBtn.bezelStyle = NSBezelStyleRounded;
+    self.testHapticBtn.target = self;
+    self.testHapticBtn.action = @selector(testHapticClicked:);
+    self.testHapticBtn.autoresizingMask = NSViewMinXMargin;
+    [hapticCard addSubview:self.testHapticBtn];
+    
+    self.hapticOnKeyCheck = [self checkboxWithTitle:@"Actuate on Keystroke (simulates mechanical plate vibration)" action:@selector(hapticOnKeyToggled:)];
+    self.hapticOnKeyCheck.frame = NSMakeRect(20, 128, 430, 20);
+    self.hapticOnKeyCheck.autoresizingMask = NSViewWidthSizable;
+    [hapticCard addSubview:self.hapticOnKeyCheck];
+    
+    self.hapticOnMouseCheck = [self checkboxWithTitle:@"Actuate on Mouse Click" action:@selector(hapticOnMouseToggled:)];
+    self.hapticOnMouseCheck.frame = NSMakeRect(20, 152, 430, 20);
+    self.hapticOnMouseCheck.autoresizingMask = NSViewWidthSizable;
+    [hapticCard addSubview:self.hapticOnMouseCheck];
+    
+    // 2. Trackpad Force-Click Snap (Y = 221, height = 115)
+    FlippedCardView *forceCard = [self cardContainerWithFrame:NSMakeRect(x, 221, cardWidth, 115)];
+    [container addSubview:forceCard];
+    
+    NSTextField *forceTitle = [self labelWithText:@"Trackpad Force-Click Snap" bold:YES fontSize:13];
+    forceTitle.frame = NSMakeRect(16, 14, 300, 18);
+    [forceCard addSubview:forceTitle];
+    
+    NSTextField *forceDesc = [self labelWithText:@"Provides tactile acoustic pop and feedback when deep-pressing the Force Touch trackpad." bold:NO fontSize:11];
+    forceDesc.textColor = [NSColor secondaryLabelColor];
+    forceDesc.frame = NSMakeRect(18, 36, 450, 16);
+    forceDesc.autoresizingMask = NSViewWidthSizable;
+    [forceCard addSubview:forceDesc];
+    
+    self.forceClickCheck = [self checkboxWithTitle:@"Force-Click Acoustic Snap (deep press audio feedback)" action:@selector(forceClickToggled:)];
+    self.forceClickCheck.frame = NSMakeRect(18, 64, 450, 20);
+    self.forceClickCheck.autoresizingMask = NSViewWidthSizable;
+    [forceCard addSubview:self.forceClickCheck];
+    
+    BOOL hasForceTouch = [HapticEngine isForceTouchHardwareAvailable];
+    NSTextField *hwBadge = [self labelWithText:hasForceTouch ? @"✅ Apple Force Touch Hardware: Active & Ready" : @"ℹ️ No Force Touch hardware detected on this display" bold:NO fontSize:11];
+    hwBadge.textColor = hasForceTouch ? [NSColor systemGreenColor] : [NSColor secondaryLabelColor];
+    hwBadge.frame = NSMakeRect(20, 88, 430, 16);
+    hwBadge.autoresizingMask = NSViewWidthSizable;
+    [forceCard addSubview:hwBadge];
     
     return container;
 }
@@ -1196,8 +1305,21 @@
     self.keyUpCheck.state = audio.keyUpSoundsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.mouseClickCheck.state = audio.mouseSoundsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.mouseScrollCheck.state = audio.scrollSoundsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    // Dynamics & Haptics
     self.velocityDynamicsCheck.state = audio.velocityDynamicsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.forceClickCheck.state = audio.forceClickSoundEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    
+    HapticEngine *haptic = [HapticEngine sharedEngine];
+    self.hapticEnabledCheck.state = haptic.enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    
+    NSInteger segIdx = 1;
+    if (haptic.intensity == ClackityHapticIntensitySubtle) segIdx = 0;
+    else if (haptic.intensity == ClackityHapticIntensityHeavy) segIdx = 2;
+    self.hapticSegmentControl.selectedSegment = segIdx;
+    
+    self.hapticOnKeyCheck.state = haptic.hapticOnKeyPress ? NSControlStateValueOn : NSControlStateValueOff;
+    self.hapticOnMouseCheck.state = haptic.hapticOnMouseClick ? NSControlStateValueOn : NSControlStateValueOff;
+    [self updateHapticControlsState];
     self.secureInputCheck.state = [InputMonitor sharedMonitor].secureInputProtectionEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.muteModifiersCheck.state = audio.muteModifiers ? NSControlStateValueOn : NSControlStateValueOff;
     self.spatialAudioCheck.state = audio.spatialAudioEnabled ? NSControlStateValueOn : NSControlStateValueOff;
@@ -1412,6 +1534,46 @@
     [AudioEngine sharedEngine].toneBalance = val;
     [self updateToneLabelsForValue:val];
     [[NSUserDefaults standardUserDefaults] setFloat:val forKey:@"toneBalance"];
+}
+
+- (void)updateHapticControlsState {
+    BOOL on = [HapticEngine sharedEngine].enabled;
+    self.hapticSegmentControl.enabled = on;
+    self.hapticOnKeyCheck.enabled = on;
+    self.hapticOnMouseCheck.enabled = on;
+    self.testHapticBtn.enabled = on;
+}
+
+- (void)hapticEnabledToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [HapticEngine sharedEngine].enabled = on;
+    [self updateHapticControlsState];
+    if (on) {
+        [[HapticEngine sharedEngine] triggerKeyHaptic];
+    }
+}
+
+- (void)hapticSegmentChanged:(NSSegmentedControl *)sender {
+    ClackityHapticIntensity intensity = ClackityHapticIntensityCrisp;
+    if (sender.selectedSegment == 0) {
+        intensity = ClackityHapticIntensitySubtle;
+    } else if (sender.selectedSegment == 2) {
+        intensity = ClackityHapticIntensityHeavy;
+    }
+    [HapticEngine sharedEngine].intensity = intensity;
+    [[HapticEngine sharedEngine] triggerKeyHaptic];
+}
+
+- (void)hapticOnKeyToggled:(NSButton *)sender {
+    [HapticEngine sharedEngine].hapticOnKeyPress = (sender.state == NSControlStateValueOn);
+}
+
+- (void)hapticOnMouseToggled:(NSButton *)sender {
+    [HapticEngine sharedEngine].hapticOnMouseClick = (sender.state == NSControlStateValueOn);
+}
+
+- (void)testHapticClicked:(NSButton *)sender {
+    [[HapticEngine sharedEngine] triggerKeyHaptic];
 }
 
 - (void)velocityDynamicsToggled:(NSButton *)sender {
