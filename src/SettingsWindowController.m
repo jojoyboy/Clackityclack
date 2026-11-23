@@ -338,8 +338,11 @@
 @property (nonatomic, strong) NSTextField *toneLowDbLabel;
 @property (nonatomic, strong) NSTextField *toneHighDbLabel;
 @property (nonatomic, strong) NSButton *typewriterModeCheck;
+@property (nonatomic, strong) NSButton *typewriterReturnCheck;
 @property (nonatomic, strong) NSButton *typewriterBellCheck;
+@property (nonatomic, strong) NSButton *typewriterMarginBellOnlyCheck;
 @property (nonatomic, strong) NSButton *typewriterRatchetCheck;
+@property (nonatomic, strong) NSButton *testReturnBtn;
 @property (nonatomic, strong) NSButton *testBellBtn;
 @property (nonatomic, strong) NSButton *testRatchetBtn;
 @property (nonatomic, strong) NSButton *velocityDynamicsCheck;
@@ -818,7 +821,7 @@
 #pragma mark - Section 1: Acoustics & EQ
 
 - (FlippedView *)buildAcousticsView {
-    CGFloat totalHeight = 720.0;
+    CGFloat totalHeight = 780.0;
     FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, totalHeight)];
     container.autoresizingMask = NSViewWidthSizable;
     CGFloat cardWidth = 495.0;
@@ -868,31 +871,46 @@
     eqDesc.autoresizingMask = NSViewWidthSizable;
     [eqCard addSubview:eqDesc];
     
-    // 2. Vintage Typewriter Carriage Return & Ratchet Card (Y = 181, height = 152)
-    FlippedCardView *twCard = [self cardContainerWithFrame:NSMakeRect(x, 181, cardWidth, 152)];
+    // 2. Authentic Vintage Typewriter Mechanics Card (Y = 181, height = 206)
+    FlippedCardView *twCard = [self cardContainerWithFrame:NSMakeRect(x, 181, cardWidth, 206)];
     [container addSubview:twCard];
     
-    NSTextField *twTitle = [self labelWithText:@"Vintage Typewriter Carriage Return & Ratchet" bold:YES fontSize:13.5];
-    twTitle.frame = NSMakeRect(18, 14, 400, 18);
+    NSTextField *twTitle = [self labelWithText:@"Vintage Typewriter Mechanics (Authentic Acoustic Suite)" bold:YES fontSize:13.5];
+    twTitle.frame = NSMakeRect(18, 14, 430, 18);
     [twCard addSubview:twTitle];
     
-    NSTextField *twDesc = [self labelWithText:@"Plays authentic brass margin bell chime on Return and mechanical pawl ratchet on Backspace." bold:NO fontSize:11];
+    NSTextField *twDesc = [self labelWithText:@"Authentic 1940s manual mechanics: carriage rail glide on Return, margin warning bell, and ratchet." bold:NO fontSize:11];
     twDesc.textColor = [NSColor secondaryLabelColor];
     twDesc.frame = NSMakeRect(18, 36, 450, 16);
     twDesc.autoresizingMask = NSViewWidthSizable;
     [twCard addSubview:twDesc];
     
-    self.typewriterModeCheck = [self checkboxWithTitle:@"Enable Vintage Typewriter Mode (Bell & Ratchet Overlay)" action:@selector(typewriterModeToggled:)];
-    self.typewriterModeCheck.frame = NSMakeRect(18, 60, 450, 20);
+    self.typewriterModeCheck = [self checkboxWithTitle:@"Enable Vintage Typewriter Mechanics" action:@selector(typewriterModeToggled:)];
+    self.typewriterModeCheck.frame = NSMakeRect(18, 58, 450, 20);
     self.typewriterModeCheck.autoresizingMask = NSViewWidthSizable;
     [twCard addSubview:self.typewriterModeCheck];
     
-    self.typewriterBellCheck = [self checkboxWithTitle:@"Carriage Return Bell Chime (Ding! on Enter)" action:@selector(typewriterBellToggled:)];
-    self.typewriterBellCheck.frame = NSMakeRect(38, 86, 300, 20);
+    // Row 1: Carriage Return Glide on Enter
+    self.typewriterReturnCheck = [self checkboxWithTitle:@"Carriage Return Glide on Enter (platen ratchet & rail slide)" action:@selector(typewriterReturnToggled:)];
+    self.typewriterReturnCheck.frame = NSMakeRect(36, 84, 320, 20);
+    self.typewriterReturnCheck.autoresizingMask = NSViewWidthSizable;
+    [twCard addSubview:self.typewriterReturnCheck];
+    
+    self.testReturnBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 135, 81, 115, 26)];
+    self.testReturnBtn.title = @"Test Return ↩️";
+    self.testReturnBtn.bezelStyle = NSBezelStyleRounded;
+    self.testReturnBtn.target = self;
+    self.testReturnBtn.action = @selector(testReturnClicked:);
+    self.testReturnBtn.autoresizingMask = NSViewMinXMargin;
+    [twCard addSubview:self.testReturnBtn];
+    
+    // Row 2: Authentic Margin Warning Bell
+    self.typewriterBellCheck = [self checkboxWithTitle:@"Authentic Margin Warning Bell (chimes when line reaches margin)" action:@selector(typewriterBellToggled:)];
+    self.typewriterBellCheck.frame = NSMakeRect(36, 112, 320, 20);
     self.typewriterBellCheck.autoresizingMask = NSViewWidthSizable;
     [twCard addSubview:self.typewriterBellCheck];
     
-    self.testBellBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 135, 83, 115, 26)];
+    self.testBellBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 135, 109, 115, 26)];
     self.testBellBtn.title = @"Test Bell 🔔";
     self.testBellBtn.bezelStyle = NSBezelStyleRounded;
     self.testBellBtn.target = self;
@@ -900,12 +918,19 @@
     self.testBellBtn.autoresizingMask = NSViewMinXMargin;
     [twCard addSubview:self.testBellBtn];
     
-    self.typewriterRatchetCheck = [self checkboxWithTitle:@"Escapement Pawl Ratchet (on Backspace)" action:@selector(typewriterRatchetToggled:)];
-    self.typewriterRatchetCheck.frame = NSMakeRect(38, 114, 300, 20);
+    // Row 2 subtitle option
+    self.typewriterMarginBellOnlyCheck = [self checkboxWithTitle:@"Authentic margin bell only (uncheck for Hollywood bell on every Return)" action:@selector(typewriterMarginBellOnlyToggled:)];
+    self.typewriterMarginBellOnlyCheck.frame = NSMakeRect(56, 138, 420, 18);
+    self.typewriterMarginBellOnlyCheck.autoresizingMask = NSViewWidthSizable;
+    [twCard addSubview:self.typewriterMarginBellOnlyCheck];
+    
+    // Row 3: Escapement Pawl Ratchet on Backspace
+    self.typewriterRatchetCheck = [self checkboxWithTitle:@"Escapement Pawl Ratchet on Backspace" action:@selector(typewriterRatchetToggled:)];
+    self.typewriterRatchetCheck.frame = NSMakeRect(36, 166, 320, 20);
     self.typewriterRatchetCheck.autoresizingMask = NSViewWidthSizable;
     [twCard addSubview:self.typewriterRatchetCheck];
     
-    self.testRatchetBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 135, 111, 115, 26)];
+    self.testRatchetBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 135, 163, 115, 26)];
     self.testRatchetBtn.title = @"Test Ratchet ⚙️";
     self.testRatchetBtn.bezelStyle = NSBezelStyleRounded;
     self.testRatchetBtn.target = self;
@@ -913,8 +938,8 @@
     self.testRatchetBtn.autoresizingMask = NSViewMinXMargin;
     [twCard addSubview:self.testRatchetBtn];
     
-    // 3. Dynamic Strike Velocity & Spatial Audio (Y = 351, height = 115)
-    FlippedCardView *dynCard = [self cardContainerWithFrame:NSMakeRect(x, 351, cardWidth, 115)];
+    // 3. Dynamic Strike Velocity & Spatial Audio (Y = 405, height = 115)
+    FlippedCardView *dynCard = [self cardContainerWithFrame:NSMakeRect(x, 405, cardWidth, 115)];
     [container addSubview:dynCard];
     
     NSTextField *dynTitle = [self labelWithText:@"Dynamics & Spatial Stereo Acoustics" bold:YES fontSize:13];
@@ -936,8 +961,8 @@
     self.muteModifiersCheck.autoresizingMask = NSViewWidthSizable;
     [dynCard addSubview:self.muteModifiersCheck];
     
-    // 4. Privacy & Meeting Intelligence (Y = 484, height = 85)
-    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 484, cardWidth, 85)];
+    // 4. Privacy & Meeting Intelligence (Y = 538, height = 85)
+    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 538, cardWidth, 85)];
     [container addSubview:privCard];
     
     NSTextField *privTitle = [self labelWithText:@"Privacy & Trigger Suppression" bold:YES fontSize:13];
@@ -954,8 +979,8 @@
     self.meetingMuteCheck.autoresizingMask = NSViewWidthSizable;
     [privCard addSubview:self.meetingMuteCheck];
     
-    // 5. Acoustic Trigger Controls (Y = 587, height = 115)
-    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 587, cardWidth, 115)];
+    // 5. Acoustic Trigger Controls (Y = 641, height = 115)
+    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 641, cardWidth, 115)];
     [container addSubview:trigCard];
     
     NSTextField *trigTitle = [self labelWithText:@"Detailed Audio Triggers" bold:YES fontSize:13];
@@ -1376,7 +1401,9 @@
     
     // Vintage Typewriter
     self.typewriterModeCheck.state = audio.typewriterModeEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.typewriterReturnCheck.state = audio.typewriterReturnGlideEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.typewriterBellCheck.state = audio.typewriterBellEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.typewriterMarginBellOnlyCheck.state = audio.typewriterMarginBellOnly ? NSControlStateValueOn : NSControlStateValueOff;
     self.typewriterRatchetCheck.state = audio.typewriterRatchetEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     [self updateTypewriterControlsState];
     
@@ -1609,8 +1636,11 @@
 
 - (void)updateTypewriterControlsState {
     BOOL on = [AudioEngine sharedEngine].typewriterModeEnabled;
+    self.typewriterReturnCheck.enabled = on;
     self.typewriterBellCheck.enabled = on;
+    self.typewriterMarginBellOnlyCheck.enabled = on && [AudioEngine sharedEngine].typewriterBellEnabled;
     self.typewriterRatchetCheck.enabled = on;
+    self.testReturnBtn.enabled = on;
     self.testBellBtn.enabled = on;
     self.testRatchetBtn.enabled = on;
 }
@@ -1620,16 +1650,30 @@
     [AudioEngine sharedEngine].typewriterModeEnabled = on;
     [self updateTypewriterControlsState];
     if (on) {
-        [[AudioEngine sharedEngine] playTypewriterBell];
+        [[AudioEngine sharedEngine] playTypewriterCarriageReturn];
+    }
+}
+
+- (void)typewriterReturnToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [AudioEngine sharedEngine].typewriterReturnGlideEnabled = on;
+    if (on) {
+        [[AudioEngine sharedEngine] playTypewriterCarriageReturn];
     }
 }
 
 - (void)typewriterBellToggled:(NSButton *)sender {
     BOOL on = (sender.state == NSControlStateValueOn);
     [AudioEngine sharedEngine].typewriterBellEnabled = on;
+    [self updateTypewriterControlsState];
     if (on) {
         [[AudioEngine sharedEngine] playTypewriterBell];
     }
+}
+
+- (void)typewriterMarginBellOnlyToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [AudioEngine sharedEngine].typewriterMarginBellOnly = on;
 }
 
 - (void)typewriterRatchetToggled:(NSButton *)sender {
@@ -1638,6 +1682,10 @@
     if (on) {
         [[AudioEngine sharedEngine] playTypewriterRatchet];
     }
+}
+
+- (void)testReturnClicked:(NSButton *)sender {
+    [[AudioEngine sharedEngine] playTypewriterCarriageReturn];
 }
 
 - (void)testBellClicked:(NSButton *)sender {

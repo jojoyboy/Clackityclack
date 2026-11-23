@@ -21,6 +21,9 @@
 @property (nonatomic, assign) BOOL typewriterModeEnabled;
 @property (nonatomic, assign) BOOL typewriterBellEnabled;
 @property (nonatomic, assign) BOOL typewriterRatchetEnabled;
+@property (nonatomic, assign) BOOL typewriterReturnGlideEnabled;
+@property (nonatomic, assign) BOOL typewriterMarginBellOnly;
+@property (nonatomic, assign) NSInteger typewriterMarginLength;
 
 + (instancetype)sharedEngine;
 
@@ -33,6 +36,7 @@
 - (void)playScroll;
 - (void)playForceClickSound;
 - (void)playTypewriterBell;
+- (void)playTypewriterCarriageReturn;
 - (void)playTypewriterRatchet;
 - (void)toggleMute;
 

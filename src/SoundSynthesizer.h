@@ -41,7 +41,12 @@ typedef NS_ENUM(NSInteger, ClackityKeyCategory) {
 + (NSString *)subtitleForProfile:(ClackitySoundProfile)profile;
 + (NSArray<NSNumber *> *)allProfiles;
 
-// Vintage Typewriter Acoustics
+// Vintage Typewriter Authentic Acoustics
++ (AVAudioPCMBuffer *)typewriterMarginBellBuffer;
++ (AVAudioPCMBuffer *)typewriterCarriageReturnBuffer;
++ (AVAudioPCMBuffer *)typewriterBackspaceRatchetBuffer;
+
+// Legacy / Classic Chime
 + (AVAudioPCMBuffer *)typewriterCarriageReturnBellBuffer;
 + (AVAudioPCMBuffer *)typewriterRatchetBuffer;
 

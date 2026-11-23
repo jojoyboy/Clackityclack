@@ -15,7 +15,10 @@
     NSMutableDictionary<NSString *, AVAudioPCMBuffer *> *_bufferCache;
     
     AVAudioPCMBuffer *_typewriterBellBuffer;
+    AVAudioPCMBuffer *_typewriterReturnBuffer;
     AVAudioPCMBuffer *_typewriterRatchetBuffer;
+    NSInteger _currentLineCharCount;
+    BOOL _marginBellFired;
     
     dispatch_queue_t _audioQueue;
 }
@@ -51,13 +54,22 @@
             @"typewriterModeEnabled": @NO,
             @"typewriterBellEnabled": @YES,
             @"typewriterRatchetEnabled": @YES,
+            @"typewriterReturnGlideEnabled": @YES,
+            @"typewriterMarginBellOnly": @YES,
+            @"typewriterMarginLength": @72,
         }];
         _typewriterModeEnabled = [defs boolForKey:@"typewriterModeEnabled"];
         _typewriterBellEnabled = [defs boolForKey:@"typewriterBellEnabled"];
         _typewriterRatchetEnabled = [defs boolForKey:@"typewriterRatchetEnabled"];
+        _typewriterReturnGlideEnabled = [defs boolForKey:@"typewriterReturnGlideEnabled"];
+        _typewriterMarginBellOnly = [defs boolForKey:@"typewriterMarginBellOnly"];
+        _typewriterMarginLength = [defs integerForKey:@"typewriterMarginLength"] ?: 72;
         
-        _typewriterBellBuffer = [SoundSynthesizer typewriterCarriageReturnBellBuffer];
-        _typewriterRatchetBuffer = [SoundSynthesizer typewriterRatchetBuffer];
+        _typewriterBellBuffer = [SoundSynthesizer typewriterMarginBellBuffer];
+        _typewriterReturnBuffer = [SoundSynthesizer typewriterCarriageReturnBuffer];
+        _typewriterRatchetBuffer = [SoundSynthesizer typewriterBackspaceRatchetBuffer];
+        _currentLineCharCount = 0;
+        _marginBellFired = NO;
         
         _audioQueue = dispatch_queue_create("com.clackity.audio", DISPATCH_QUEUE_SERIAL);
         _bufferCache = [NSMutableDictionary dictionary];
@@ -376,6 +388,21 @@
     [[NSUserDefaults standardUserDefaults] setBool:typewriterRatchetEnabled forKey:@"typewriterRatchetEnabled"];
 }
 
+- (void)setTypewriterReturnGlideEnabled:(BOOL)typewriterReturnGlideEnabled {
+    _typewriterReturnGlideEnabled = typewriterReturnGlideEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:typewriterReturnGlideEnabled forKey:@"typewriterReturnGlideEnabled"];
+}
+
+- (void)setTypewriterMarginBellOnly:(BOOL)typewriterMarginBellOnly {
+    _typewriterMarginBellOnly = typewriterMarginBellOnly;
+    [[NSUserDefaults standardUserDefaults] setBool:typewriterMarginBellOnly forKey:@"typewriterMarginBellOnly"];
+}
+
+- (void)setTypewriterMarginLength:(NSInteger)typewriterMarginLength {
+    _typewriterMarginLength = typewriterMarginLength;
+    [[NSUserDefaults standardUserDefaults] setInteger:typewriterMarginLength forKey:@"typewriterMarginLength"];
+}
+
 - (void)playTypewriterBell {
     if (!_typewriterBellBuffer || _isMeetingMuted) return;
     dispatch_async(_audioQueue, ^{
@@ -383,8 +410,23 @@
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
         // In physical typewriters, the margin bell is mounted on the far right carriage rail
         player.pan = self->_spatialAudioEnabled ? 0.35f : 0.0f;
-        player.volume = self->_masterVolume * 0.95f;
+        player.volume = self->_masterVolume * 0.90f;
         [player scheduleBuffer:self->_typewriterBellBuffer atTime:nil options:AVAudioPlayerNodeBufferInterrupts completionHandler:nil];
+        if (!player.isPlaying) {
+            [player play];
+        }
+    });
+}
+
+- (void)playTypewriterCarriageReturn {
+    if (!_typewriterReturnBuffer || _isMeetingMuted) return;
+    dispatch_async(_audioQueue, ^{
+        AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
+        self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
+        // Carriage return physically slides the carriage across from right to left
+        player.pan = self->_spatialAudioEnabled ? -0.15f : 0.0f;
+        player.volume = self->_masterVolume * 0.95f;
+        [player scheduleBuffer:self->_typewriterReturnBuffer atTime:nil options:AVAudioPlayerNodeBufferInterrupts completionHandler:nil];
         if (!player.isPlaying) {
             [player play];
         }
@@ -396,8 +438,8 @@
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
-        player.pan = self->_spatialAudioEnabled ? 0.25f : 0.0f;
-        player.volume = self->_masterVolume * 0.90f;
+        player.pan = self->_spatialAudioEnabled ? 0.20f : 0.0f;
+        player.volume = self->_masterVolume * 0.85f;
         [player scheduleBuffer:self->_typewriterRatchetBuffer atTime:nil options:AVAudioPlayerNodeBufferInterrupts completionHandler:nil];
         if (!player.isPlaying) {
             [player play];
@@ -408,12 +450,34 @@
 - (void)playKeyWithCategory:(ClackityKeyCategory)category keyCode:(int64_t)keyCode isKeyUp:(BOOL)isKeyUp {
     [self playBufferWithCategory:category keyCode:keyCode isKeyUp:isKeyUp];
     
-    // Vintage Typewriter Mechanical Overlays
+    // Authentic Vintage Typewriter Mechanics
     if (_typewriterModeEnabled && !isKeyUp && !_isMeetingMuted && _keySoundsEnabled) {
-        if (category == ClackityKeyCategoryEnter && _typewriterBellEnabled) {
-            [self playTypewriterBell];
-        } else if (category == ClackityKeyCategoryBackspace && _typewriterRatchetEnabled) {
-            [self playTypewriterRatchet];
+        if (category == ClackityKeyCategoryEnter) {
+            // Carriage Return on Enter
+            if (_typewriterReturnGlideEnabled) {
+                [self playTypewriterCarriageReturn];
+            }
+            if (!_typewriterMarginBellOnly && _typewriterBellEnabled) {
+                [self playTypewriterBell];
+            }
+            _currentLineCharCount = 0;
+            _marginBellFired = NO;
+        } else if (category == ClackityKeyCategoryBackspace) {
+            if (_typewriterRatchetEnabled) {
+                [self playTypewriterRatchet];
+            }
+            if (_currentLineCharCount > 0) {
+                _currentLineCharCount--;
+            }
+            if (_currentLineCharCount < _typewriterMarginLength) {
+                _marginBellFired = NO;
+            }
+        } else if (category <= ClackityKeyCategoryModifier) {
+            _currentLineCharCount++;
+            if (_typewriterBellEnabled && !_marginBellFired && _currentLineCharCount >= _typewriterMarginLength) {
+                _marginBellFired = YES;
+                [self playTypewriterBell];
+            }
         }
     }
 }
