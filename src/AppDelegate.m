@@ -6,6 +6,7 @@
 #import "UpdateManager.h"
 #import "SettingsWindowController.h"
 #import "HapticEngine.h"
+#import "AppProfileManager.h"
 #import <mach/mach_time.h>
 
 @interface AppDelegate () {
@@ -164,7 +165,6 @@
 - (void)activeApplicationChanged:(NSNotification *)notification {
     NSRunningApplication *app = notification.userInfo[NSWorkspaceApplicationKey];
     NSString *bundleId = app.bundleIdentifier.lowercaseString ?: @"";
-    NSString *appName = app.localizedName.lowercaseString ?: @"";
     
     // 1. Meeting Auto-Mute Check
     if (self.autoMuteInMeetingsEnabled) {
@@ -190,43 +190,8 @@
         [[MenuBarController sharedController] updateStatusItem];
     }
     
-    // 2. Context-Aware Profile Switching
-    if (self.contextAwareProfilesEnabled && app) {
-        AudioEngine *audio = [AudioEngine sharedEngine];
-        NSString *targetPackName = nil;
-        
-        // Development / IDEs: Tactile Thock (Holy Panda / Topre)
-        if ([bundleId containsString:@"xcode"] || [bundleId containsString:@"vscode"] ||
-            [bundleId containsString:@"terminal"] || [bundleId containsString:@"iterm"] ||
-            [appName containsString:@"cursor"] || [appName containsString:@"warp"] ||
-            [appName containsString:@"zed"] || [appName containsString:@"ghostty"] ||
-            [bundleId containsString:@"sublime"] || [bundleId containsString:@"jetbrains"]) {
-            targetPackName = @"Holy Panda";
-        }
-        // Writing / Notes: Crisp Classic / Tactile Snap (Buckling Spring / Box White / Cream)
-        else if ([bundleId containsString:@"notion"] || [bundleId containsString:@"obsidian"] ||
-                 [bundleId containsString:@"notes"] || [bundleId containsString:@"pages"] ||
-                 [bundleId containsString:@"word"] || [bundleId containsString:@"craft"]) {
-            targetPackName = @"NovelKeys Cream";
-        }
-        // Browsing / Chat: Ultra Smooth Linear (Tealios / Apex Pro)
-        else if ([bundleId containsString:@"safari"] || [bundleId containsString:@"chrome"] ||
-                 [bundleId containsString:@"firefox"] || [bundleId containsString:@"slack"] ||
-                 [bundleId containsString:@"discord"] || [bundleId containsString:@"messages"]) {
-            targetPackName = @"Turquoise Tealios";
-        }
-        
-        if (targetPackName) {
-            for (CustomSoundPack *pack in [SoundPackManager sharedManager].customPacks) {
-                if ([pack.name containsString:targetPackName] && audio.customPack != pack) {
-                    audio.customPack = pack;
-                    [[NSUserDefaults standardUserDefaults] setObject:pack.name forKey:@"selectedCustomPack"];
-                    [[MenuBarController sharedController] updateStatusItem];
-                    break;
-                }
-            }
-        }
-    }
+    // 2. App-Specific & Context-Aware Profile Switching
+    [[AppProfileManager sharedManager] handleActiveApplicationChanged:app];
 }
 
 - (void)updateCheckCompleted:(NSNotification *)notification {
@@ -355,36 +320,28 @@
     if ([host isEqualToString:@"switch"]) {
         NSString *name = params[@"name"] ?: params[@"profile"];
         if (name) {
-            BOOL matched = NO;
-            // 1. Search custom studio packs
-            for (CustomSoundPack *pack in [SoundPackManager sharedManager].customPacks) {
-                if ([pack.name localizedCaseInsensitiveContainsString:name]) {
-                    audio.customPack = pack;
-                    [[NSUserDefaults standardUserDefaults] setObject:pack.name forKey:@"selectedCustomPack"];
-                    matched = YES;
-                    break;
-                }
-            }
-            // 2. Search synthesized profiles
-            if (!matched) {
-                for (NSNumber *num in [SoundSynthesizer allProfiles]) {
-                    ClackitySoundProfile p = (ClackitySoundProfile)[num integerValue];
-                    NSString *pName = [SoundSynthesizer nameForProfile:p];
-                    if ([pName localizedCaseInsensitiveContainsString:name]) {
-                        audio.customPack = nil;
-                        audio.currentProfile = p;
-                        [[NSUserDefaults standardUserDefaults] setInteger:p forKey:@"selectedProfile"];
-                        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"selectedCustomPack"];
-                        matched = YES;
-                        break;
-                    }
-                }
-            }
-            if (matched) {
-                [[MenuBarController sharedController] updateStatusItem];
-                [audio playKeyWithCategory:ClackityKeyCategoryEnter isKeyUp:NO];
+            BOOL ok = [[AppProfileManager sharedManager] switchToProfileNamed:name isAutoSwitch:NO];
+            if (ok) {
                 NSLog(@"[Clackity] Switched switch profile to '%@' via URL", name);
             }
+        }
+    } else if ([host isEqualToString:@"profile"]) {
+        NSString *action = params[@"action"] ?: params[@"state"];
+        if ([action isEqualToString:@"on"] || [action isEqualToString:@"enable"] || [action isEqualToString:@"true"]) {
+            [AppProfileManager sharedManager].enabled = YES;
+        } else if ([action isEqualToString:@"off"] || [action isEqualToString:@"disable"] || [action isEqualToString:@"false"]) {
+            [AppProfileManager sharedManager].enabled = NO;
+        }
+        
+        NSString *cat = params[@"category"];
+        NSString *sw = params[@"switch"] ?: params[@"name"];
+        if (cat && sw) {
+            [[AppProfileManager sharedManager] setProfile:sw forCategory:cat.lowercaseString];
+        }
+        
+        NSString *appId = params[@"app"] ?: params[@"bundle"];
+        if (appId && sw) {
+            [[AppProfileManager sharedManager] setProfile:sw forBundleId:appId appName:nil];
         }
     } else if ([host isEqualToString:@"mute"]) {
         audio.keySoundsEnabled = NO;

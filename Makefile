@@ -1,9 +1,9 @@
 CC = clang
 CFLAGS = -fobjc-arc -O2 -Wall -Wno-deprecated-declarations -mmacosx-version-min=13.0 -arch arm64 -arch x86_64
-FRAMEWORKS = -framework Cocoa -framework AVFoundation -framework AudioToolbox -framework QuartzCore -framework ApplicationServices -framework ServiceManagement -framework Carbon
+FRAMEWORKS = -framework Cocoa -framework AVFoundation -framework AudioToolbox -framework QuartzCore -framework ApplicationServices -framework ServiceManagement -framework Carbon -framework UniformTypeIdentifiers
 
 APP_NAME = Clackity
-VERSION = 1.0.1
+VERSION = 1.0.3
 BUILD_DIR = build.noindex
 APP_BUNDLE = $(BUILD_DIR)/$(APP_NAME).app
 CONTENTS_DIR = $(APP_BUNDLE)/Contents
@@ -21,6 +21,7 @@ SRCS = src/main.m \
        src/MenuBarController.m \
        src/UpdateManager.m \
        src/HapticEngine.m \
+       src/AppProfileManager.m \
        src/SettingsWindowController.m
 
 OBJS = $(patsubst src/%.m, $(BUILD_DIR)/obj/%.o, $(SRCS))

@@ -7,7 +7,9 @@
 #import "AppDelegate.h"
 #import "MenuBarController.h"
 #import "HapticEngine.h"
+#import "AppProfileManager.h"
 #import <ServiceManagement/ServiceManagement.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #pragma mark - Flipped Views for Natural Top-Down Layout
 
@@ -391,6 +393,16 @@
 @property (nonatomic, strong) NSButton *showInDockCheck;
 @property (nonatomic, strong) NSPopUpButton *menuBarDisplayPopUp;
 @property (nonatomic, strong) NSButton *contextAwareCheck;
+@property (nonatomic, strong) NSPopUpButton *codeProfilePopUp;
+@property (nonatomic, strong) NSPopUpButton *writingProfilePopUp;
+@property (nonatomic, strong) NSPopUpButton *chatProfilePopUp;
+@property (nonatomic, strong) NSPopUpButton *browserProfilePopUp;
+@property (nonatomic, strong) NSPopUpButton *defaultProfilePopUp;
+@property (nonatomic, strong) NSButton *addCustomAppBtn;
+@property (nonatomic, strong) FlippedCardView *appProfilesCard;
+@property (nonatomic, strong) FlippedView *customRulesContainerView;
+@property (nonatomic, strong) FlippedCardView *permCard;
+@property (nonatomic, strong) FlippedCardView *aboutCard;
 @property (nonatomic, strong) NSTextField *accessibilityStatusLabel;
 @property (nonatomic, strong) NSButton *accessibilityFixBtn;
 
@@ -431,6 +443,10 @@
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(soundPacksDidChangeNotification:)
                                                      name:ClackitySoundPacksDidChangeNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(appProfileDidChangeNotification:)
+                                                     name:ClackityAppProfileDidChangeNotification
                                                    object:nil];
     }
     return self;
@@ -1276,7 +1292,9 @@
 #pragma mark - Section 4: General & Privacy
 
 - (FlippedView *)buildGeneralView {
-    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, 590)];
+    CGFloat totalHeight = 840.0;
+    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, totalHeight)];
+    container.autoresizingMask = NSViewWidthSizable;
     CGFloat cardWidth = 495.0;
     CGFloat x = 20.0;
     
@@ -1305,13 +1323,14 @@
     checkUpdatesBtn.bezelStyle = NSBezelStyleRounded;
     checkUpdatesBtn.target = self;
     checkUpdatesBtn.action = @selector(checkUpdatesClicked:);
+    checkUpdatesBtn.autoresizingMask = NSViewMinXMargin;
     [sysCard addSubview:checkUpdatesBtn];
     
-    // 2. Menu Bar Display & Profiles (Y = 162, height = 125)
-    FlippedCardView *statsCard = [self cardContainerWithFrame:NSMakeRect(x, 162, cardWidth, 125)];
+    // 2. Menu Bar Display & Live Odometer (Y = 162, height = 75)
+    FlippedCardView *statsCard = [self cardContainerWithFrame:NSMakeRect(x, 162, cardWidth, 75)];
     [container addSubview:statsCard];
     
-    NSTextField *statsTitle = [self labelWithText:@"Live Typing Odometer & Context Profiles" bold:YES fontSize:13];
+    NSTextField *statsTitle = [self labelWithText:@"Live Typing Odometer & Menu Bar" bold:YES fontSize:13];
     statsTitle.frame = NSMakeRect(16, 14, 350, 18);
     [statsCard addSubview:statsTitle];
     
@@ -1334,14 +1353,113 @@
     resetStatsBtn.bezelStyle = NSBezelStyleRounded;
     resetStatsBtn.target = self;
     resetStatsBtn.action = @selector(resetStatsClicked:);
+    resetStatsBtn.autoresizingMask = NSViewMinXMargin;
     [statsCard addSubview:resetStatsBtn];
     
-    self.contextAwareCheck = [self checkboxWithTitle:@"Context-Aware Profiles (Auto-switch for IDEs, Writing, Chat)" action:@selector(contextAwareToggled:)];
-    self.contextAwareCheck.frame = NSMakeRect(18, 78, 440, 20);
-    [statsCard addSubview:self.contextAwareCheck];
+    // 3. App-Specific Context Profiles (Y = 249, height = 280)
+    FlippedCardView *appCard = [self cardContainerWithFrame:NSMakeRect(x, 249, cardWidth, 280)];
+    self.appProfilesCard = appCard;
+    [container addSubview:appCard];
     
-    // 3. Accessibility Status (Y = 299, height = 75)
-    FlippedCardView *permCard = [self cardContainerWithFrame:NSMakeRect(x, 299, cardWidth, 75)];
+    NSTextField *appTitle = [self labelWithText:@"App-Specific Switch Auto-Switching" bold:YES fontSize:13.5];
+    appTitle.frame = NSMakeRect(16, 14, 380, 18);
+    [appCard addSubview:appTitle];
+    
+    NSTextField *appDesc = [self labelWithText:@"Automatically switches keyboard acoustics to match your active app." bold:NO fontSize:11];
+    appDesc.textColor = [NSColor secondaryLabelColor];
+    appDesc.frame = NSMakeRect(18, 34, cardWidth - 36, 16);
+    appDesc.autoresizingMask = NSViewWidthSizable;
+    [appCard addSubview:appDesc];
+    
+    self.contextAwareCheck = [self checkboxWithTitle:@"Enable app-specific profile auto-switching" action:@selector(contextAwareToggled:)];
+    self.contextAwareCheck.frame = NSMakeRect(18, 54, cardWidth - 36, 20);
+    self.contextAwareCheck.autoresizingMask = NSViewWidthSizable;
+    [appCard addSubview:self.contextAwareCheck];
+    
+    // Category Rows
+    CGFloat rowY = 82;
+    CGFloat rowSpacing = 28;
+    CGFloat labelW = 205;
+    CGFloat popX = 225;
+    CGFloat popW = cardWidth - popX - 20;
+    
+    // Code
+    NSTextField *c1 = [self labelWithText:@"💻 Code & Terminals:" bold:NO fontSize:11.5];
+    c1.frame = NSMakeRect(20, rowY + 3, labelW, 18);
+    [appCard addSubview:c1];
+    self.codeProfilePopUp = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(popX, rowY, popW, 25) pullsDown:NO];
+    self.codeProfilePopUp.target = self;
+    self.codeProfilePopUp.action = @selector(codeProfileChanged:);
+    self.codeProfilePopUp.autoresizingMask = NSViewWidthSizable;
+    [appCard addSubview:self.codeProfilePopUp];
+    
+    rowY += rowSpacing;
+    // Writing
+    NSTextField *c2 = [self labelWithText:@"✍️ Writing & Documentation:" bold:NO fontSize:11.5];
+    c2.frame = NSMakeRect(20, rowY + 3, labelW, 18);
+    [appCard addSubview:c2];
+    self.writingProfilePopUp = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(popX, rowY, popW, 25) pullsDown:NO];
+    self.writingProfilePopUp.target = self;
+    self.writingProfilePopUp.action = @selector(writingProfileChanged:);
+    self.writingProfilePopUp.autoresizingMask = NSViewWidthSizable;
+    [appCard addSubview:self.writingProfilePopUp];
+    
+    rowY += rowSpacing;
+    // Chat
+    NSTextField *c3 = [self labelWithText:@"💬 Chat & Meetings:" bold:NO fontSize:11.5];
+    c3.frame = NSMakeRect(20, rowY + 3, labelW, 18);
+    [appCard addSubview:c3];
+    self.chatProfilePopUp = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(popX, rowY, popW, 25) pullsDown:NO];
+    self.chatProfilePopUp.target = self;
+    self.chatProfilePopUp.action = @selector(chatProfileChanged:);
+    self.chatProfilePopUp.autoresizingMask = NSViewWidthSizable;
+    [appCard addSubview:self.chatProfilePopUp];
+    
+    rowY += rowSpacing;
+    // Browser
+    NSTextField *c4 = [self labelWithText:@"🌐 Web Browsing:" bold:NO fontSize:11.5];
+    c4.frame = NSMakeRect(20, rowY + 3, labelW, 18);
+    [appCard addSubview:c4];
+    self.browserProfilePopUp = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(popX, rowY, popW, 25) pullsDown:NO];
+    self.browserProfilePopUp.target = self;
+    self.browserProfilePopUp.action = @selector(browserProfileChanged:);
+    self.browserProfilePopUp.autoresizingMask = NSViewWidthSizable;
+    [appCard addSubview:self.browserProfilePopUp];
+    
+    rowY += rowSpacing;
+    // Default
+    NSTextField *c5 = [self labelWithText:@"🏠 Default / Other Apps:" bold:NO fontSize:11.5];
+    c5.frame = NSMakeRect(20, rowY + 3, labelW, 18);
+    [appCard addSubview:c5];
+    self.defaultProfilePopUp = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(popX, rowY, popW, 25) pullsDown:NO];
+    self.defaultProfilePopUp.target = self;
+    self.defaultProfilePopUp.action = @selector(defaultProfileChanged:);
+    self.defaultProfilePopUp.autoresizingMask = NSViewWidthSizable;
+    [appCard addSubview:self.defaultProfilePopUp];
+    
+    rowY += 34;
+    // Custom Overrides Sub-header
+    NSTextField *custHdr = [self labelWithText:@"Custom Application Overrides:" bold:YES fontSize:11.5];
+    custHdr.frame = NSMakeRect(20, rowY + 3, 220, 18);
+    [appCard addSubview:custHdr];
+    
+    self.addCustomAppBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 165, rowY, 145, 24)];
+    self.addCustomAppBtn.title = @"+ Add Application...";
+    self.addCustomAppBtn.bezelStyle = NSBezelStyleRounded;
+    self.addCustomAppBtn.target = self;
+    self.addCustomAppBtn.action = @selector(addCustomAppClicked:);
+    self.addCustomAppBtn.autoresizingMask = NSViewMinXMargin;
+    [appCard addSubview:self.addCustomAppBtn];
+    
+    rowY += 28;
+    self.customRulesContainerView = [[FlippedView alloc] initWithFrame:NSMakeRect(18, rowY, cardWidth - 36, 0)];
+    self.customRulesContainerView.autoresizingMask = NSViewWidthSizable;
+    [appCard addSubview:self.customRulesContainerView];
+    
+    // 4. Accessibility Status
+    CGFloat nextY = 249 + 280 + 14;
+    FlippedCardView *permCard = [self cardContainerWithFrame:NSMakeRect(x, nextY, cardWidth, 75)];
+    self.permCard = permCard;
     [container addSubview:permCard];
     
     NSTextField *permTitle = [self labelWithText:@"macOS Accessibility Permission" bold:YES fontSize:13];
@@ -1357,10 +1475,13 @@
     self.accessibilityFixBtn.bezelStyle = NSBezelStyleRounded;
     self.accessibilityFixBtn.target = self;
     self.accessibilityFixBtn.action = @selector(fixAccessibilityClicked:);
+    self.accessibilityFixBtn.autoresizingMask = NSViewMinXMargin;
     [permCard addSubview:self.accessibilityFixBtn];
     
-    // 4. Hotkeys & Privacy (Y = 386, height = 155)
-    FlippedCardView *aboutCard = [self cardContainerWithFrame:NSMakeRect(x, 386, cardWidth, 155)];
+    // 5. Hotkeys & Privacy
+    nextY += 75 + 14;
+    FlippedCardView *aboutCard = [self cardContainerWithFrame:NSMakeRect(x, nextY, cardWidth, 155)];
+    self.aboutCard = aboutCard;
     [container addSubview:aboutCard];
     
     NSTextField *hotTitle = [self labelWithText:@"Keyboard Shortcuts & Local Guarantee" bold:YES fontSize:13];
@@ -1490,7 +1611,13 @@
     self.autoCheckUpdatesCheck.state = [UpdateManager sharedManager].autoCheckEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.showInDockCheck.state = [[NSUserDefaults standardUserDefaults] boolForKey:@"showInDock"] ? NSControlStateValueOn : NSControlStateValueOff;
     [self.menuBarDisplayPopUp selectItemAtIndex:delegate.menuBarDisplayStyle];
-    self.contextAwareCheck.state = delegate.contextAwareProfilesEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    
+    // App-Specific Profiles
+    AppProfileManager *profileMgr = [AppProfileManager sharedManager];
+    self.contextAwareCheck.state = profileMgr.enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [self updateAppProfileControlsState];
+    [self reloadAppProfilePopups];
+    [self reloadCustomRulesUI];
     
     // Accessibility
     BOOL hasAccess = [InputMonitor isAccessibilityGranted];
@@ -1890,9 +2017,198 @@
 
 - (void)contextAwareToggled:(NSButton *)sender {
     BOOL on = (sender.state == NSControlStateValueOn);
-    AppDelegate *del = (AppDelegate *)[NSApp delegate];
-    del.contextAwareProfilesEnabled = on;
-    [[NSUserDefaults standardUserDefaults] setBool:on forKey:@"contextAwareProfiles"];
+    [AppProfileManager sharedManager].enabled = on;
+    [self updateAppProfileControlsState];
+}
+
+- (void)updateAppProfileControlsState {
+    BOOL on = [AppProfileManager sharedManager].enabled;
+    self.codeProfilePopUp.enabled = on;
+    self.writingProfilePopUp.enabled = on;
+    self.chatProfilePopUp.enabled = on;
+    self.browserProfilePopUp.enabled = on;
+    self.defaultProfilePopUp.enabled = on;
+    self.addCustomAppBtn.enabled = on;
+    for (NSView *sub in self.customRulesContainerView.subviews) {
+        for (NSView *inner in sub.subviews) {
+            if ([inner isKindOfClass:[NSControl class]]) {
+                ((NSControl *)inner).enabled = on;
+            }
+        }
+    }
+}
+
+- (void)populateSwitchPopUp:(NSPopUpButton *)popUp selectedTitle:(NSString *)selectedTitle {
+    [popUp removeAllItems];
+    NSArray<NSString *> *allNames = [[AppProfileManager sharedManager] allAvailableSwitchNames];
+    for (NSString *name in allNames) {
+        [popUp addItemWithTitle:name];
+    }
+    if (selectedTitle && [popUp itemWithTitle:selectedTitle]) {
+        [popUp selectItemWithTitle:selectedTitle];
+    }
+}
+
+- (void)reloadAppProfilePopups {
+    AppProfileManager *mgr = [AppProfileManager sharedManager];
+    [self populateSwitchPopUp:self.codeProfilePopUp selectedTitle:[mgr profileForCategory:ClackityAppProfileCategoryCode]];
+    [self populateSwitchPopUp:self.writingProfilePopUp selectedTitle:[mgr profileForCategory:ClackityAppProfileCategoryWriting]];
+    [self populateSwitchPopUp:self.chatProfilePopUp selectedTitle:[mgr profileForCategory:ClackityAppProfileCategoryChat]];
+    [self populateSwitchPopUp:self.browserProfilePopUp selectedTitle:[mgr profileForCategory:ClackityAppProfileCategoryBrowser]];
+    [self populateSwitchPopUp:self.defaultProfilePopUp selectedTitle:[mgr profileForCategory:ClackityAppProfileCategoryDefault]];
+}
+
+- (void)codeProfileChanged:(NSPopUpButton *)sender {
+    [[AppProfileManager sharedManager] setProfile:sender.titleOfSelectedItem forCategory:ClackityAppProfileCategoryCode];
+}
+
+- (void)writingProfileChanged:(NSPopUpButton *)sender {
+    [[AppProfileManager sharedManager] setProfile:sender.titleOfSelectedItem forCategory:ClackityAppProfileCategoryWriting];
+}
+
+- (void)chatProfileChanged:(NSPopUpButton *)sender {
+    [[AppProfileManager sharedManager] setProfile:sender.titleOfSelectedItem forCategory:ClackityAppProfileCategoryChat];
+}
+
+- (void)browserProfileChanged:(NSPopUpButton *)sender {
+    [[AppProfileManager sharedManager] setProfile:sender.titleOfSelectedItem forCategory:ClackityAppProfileCategoryBrowser];
+}
+
+- (void)defaultProfileChanged:(NSPopUpButton *)sender {
+    [[AppProfileManager sharedManager] setProfile:sender.titleOfSelectedItem forCategory:ClackityAppProfileCategoryDefault];
+    [AppProfileManager sharedManager].globalDefaultSwitch = sender.titleOfSelectedItem;
+}
+
+- (void)addCustomAppClicked:(id)sender {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.title = @"Select an Application for Switch Override";
+    panel.prompt = @"Add Override";
+    panel.directoryURL = [NSURL fileURLWithPath:@"/Applications"];
+    panel.allowedContentTypes = @[[UTType typeWithIdentifier:@"com.apple.application-bundle"]];
+    panel.allowsMultipleSelection = NO;
+    panel.canChooseDirectories = NO;
+    panel.canChooseFiles = YES;
+    
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
+        if (result == NSModalResponseOK && panel.URL) {
+            NSBundle *appBundle = [NSBundle bundleWithURL:panel.URL];
+            NSString *bundleId = appBundle.bundleIdentifier;
+            NSString *appName = [[panel.URL.lastPathComponent stringByDeletingPathExtension] capitalizedString];
+            if (!bundleId || bundleId.length == 0) {
+                bundleId = panel.URL.lastPathComponent.lowercaseString;
+            }
+            NSString *defaultSwitch = [[AppProfileManager sharedManager] profileForCategory:ClackityAppProfileCategoryDefault] ?: @"Holy Panda";
+            [[AppProfileManager sharedManager] setProfile:defaultSwitch forBundleId:bundleId appName:appName];
+            [self reloadCustomRulesUI];
+        }
+    }];
+}
+
+- (void)customRulePopUpChanged:(NSPopUpButton *)sender {
+    NSString *bundleId = sender.identifier;
+    if (bundleId) {
+        [[AppProfileManager sharedManager] setProfile:sender.titleOfSelectedItem forBundleId:bundleId appName:nil];
+    }
+}
+
+- (void)removeCustomRuleClicked:(NSButton *)sender {
+    NSString *bundleId = sender.identifier;
+    if (bundleId) {
+        [[AppProfileManager sharedManager] removeCustomRuleForBundleId:bundleId];
+        [self reloadCustomRulesUI];
+    }
+}
+
+- (void)reloadCustomRulesUI {
+    for (NSView *sub in [self.customRulesContainerView.subviews copy]) {
+        [sub removeFromSuperview];
+    }
+    
+    NSDictionary<NSString *, NSDictionary<NSString *, NSString *> *> *rules = [[AppProfileManager sharedManager] customAppRules];
+    CGFloat rowH = 28.0;
+    CGFloat currentY = 0;
+    CGFloat containerW = self.customRulesContainerView.frame.size.width;
+    BOOL isEnabled = [AppProfileManager sharedManager].enabled;
+    
+    for (NSString *bundleId in rules) {
+        NSDictionary *dict = rules[bundleId];
+        NSString *appName = dict[@"appName"] ?: bundleId;
+        NSString *profileName = dict[@"profileName"];
+        
+        FlippedView *rowView = [[FlippedView alloc] initWithFrame:NSMakeRect(0, currentY, containerW, rowH)];
+        rowView.autoresizingMask = NSViewWidthSizable;
+        [self.customRulesContainerView addSubview:rowView];
+        
+        // App Icon
+        NSImage *icon = nil;
+        NSURL *appUrl = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:bundleId];
+        if (appUrl) {
+            icon = [[NSWorkspace sharedWorkspace] iconForFile:appUrl.path];
+        }
+        if (!icon) {
+            icon = [NSImage imageNamed:NSImageNameApplicationIcon];
+        }
+        icon.size = NSMakeSize(18, 18);
+        
+        NSImageView *iconView = [[NSImageView alloc] initWithFrame:NSMakeRect(4, 5, 18, 18)];
+        iconView.image = icon;
+        [rowView addSubview:iconView];
+        
+        // App Name Label
+        NSTextField *nameLabel = [self labelWithText:appName bold:NO fontSize:11.5];
+        nameLabel.frame = NSMakeRect(28, 5, 175, 18);
+        nameLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+        [rowView addSubview:nameLabel];
+        
+        // Switch PopUp
+        CGFloat popX = 207;
+        CGFloat popW = containerW - popX - 35;
+        NSPopUpButton *swPop = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(popX, 2, popW, 24) pullsDown:NO];
+        swPop.identifier = bundleId;
+        [self populateSwitchPopUp:swPop selectedTitle:profileName];
+        swPop.target = self;
+        swPop.action = @selector(customRulePopUpChanged:);
+        swPop.enabled = isEnabled;
+        swPop.autoresizingMask = NSViewWidthSizable;
+        [rowView addSubview:swPop];
+        
+        // Remove '✕' Button
+        NSButton *delBtn = [[NSButton alloc] initWithFrame:NSMakeRect(containerW - 28, 2, 24, 24)];
+        delBtn.title = @"✕";
+        delBtn.bezelStyle = NSBezelStyleInline;
+        delBtn.identifier = bundleId;
+        delBtn.target = self;
+        delBtn.action = @selector(removeCustomRuleClicked:);
+        delBtn.enabled = isEnabled;
+        delBtn.autoresizingMask = NSViewMinXMargin;
+        [rowView addSubview:delBtn];
+        
+        currentY += rowH + 4;
+    }
+    
+    // Resize container and cards
+    CGFloat rulesH = currentY;
+    self.customRulesContainerView.frame = NSMakeRect(18, 264, containerW, rulesH);
+    
+    CGFloat cardWidth = 495.0;
+    CGFloat x = 20.0;
+    CGFloat appCardH = 270 + rulesH;
+    self.appProfilesCard.frame = NSMakeRect(x, 249, cardWidth, appCardH);
+    
+    CGFloat nextY = 249 + appCardH + 14;
+    self.permCard.frame = NSMakeRect(x, nextY, cardWidth, 75);
+    
+    nextY += 75 + 14;
+    self.aboutCard.frame = NSMakeRect(x, nextY, cardWidth, 155);
+    
+    CGFloat totalH = nextY + 155 + 25;
+    self.generalSectionView.frame = NSMakeRect(0, 0, 535, totalH);
+}
+
+- (void)appProfileDidChangeNotification:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self syncUIFromState];
+    });
 }
 
 - (void)menuBarDisplayChanged:(NSPopUpButton *)sender {
