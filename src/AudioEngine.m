@@ -14,6 +14,9 @@
     // Cached buffers: key = "category_isKeyUp"
     NSMutableDictionary<NSString *, AVAudioPCMBuffer *> *_bufferCache;
     
+    AVAudioPCMBuffer *_typewriterBellBuffer;
+    AVAudioPCMBuffer *_typewriterRatchetBuffer;
+    
     dispatch_queue_t _audioQueue;
 }
 @end
@@ -42,6 +45,19 @@
         _toneBalance = 0.0f;
         _velocityDynamicsEnabled = YES;
         _forceClickSoundEnabled = YES;
+        
+        NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+        [defs registerDefaults:@{
+            @"typewriterModeEnabled": @NO,
+            @"typewriterBellEnabled": @YES,
+            @"typewriterRatchetEnabled": @YES,
+        }];
+        _typewriterModeEnabled = [defs boolForKey:@"typewriterModeEnabled"];
+        _typewriterBellEnabled = [defs boolForKey:@"typewriterBellEnabled"];
+        _typewriterRatchetEnabled = [defs boolForKey:@"typewriterRatchetEnabled"];
+        
+        _typewriterBellBuffer = [SoundSynthesizer typewriterCarriageReturnBellBuffer];
+        _typewriterRatchetBuffer = [SoundSynthesizer typewriterRatchetBuffer];
         
         _audioQueue = dispatch_queue_create("com.clackity.audio", DISPATCH_QUEUE_SERIAL);
         _bufferCache = [NSMutableDictionary dictionary];
@@ -345,8 +361,61 @@
     });
 }
 
+- (void)setTypewriterModeEnabled:(BOOL)typewriterModeEnabled {
+    _typewriterModeEnabled = typewriterModeEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:typewriterModeEnabled forKey:@"typewriterModeEnabled"];
+}
+
+- (void)setTypewriterBellEnabled:(BOOL)typewriterBellEnabled {
+    _typewriterBellEnabled = typewriterBellEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:typewriterBellEnabled forKey:@"typewriterBellEnabled"];
+}
+
+- (void)setTypewriterRatchetEnabled:(BOOL)typewriterRatchetEnabled {
+    _typewriterRatchetEnabled = typewriterRatchetEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:typewriterRatchetEnabled forKey:@"typewriterRatchetEnabled"];
+}
+
+- (void)playTypewriterBell {
+    if (!_typewriterBellBuffer || _isMeetingMuted) return;
+    dispatch_async(_audioQueue, ^{
+        AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
+        self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
+        // In physical typewriters, the margin bell is mounted on the far right carriage rail
+        player.pan = self->_spatialAudioEnabled ? 0.35f : 0.0f;
+        player.volume = self->_masterVolume * 0.95f;
+        [player scheduleBuffer:self->_typewriterBellBuffer atTime:nil options:AVAudioPlayerNodeBufferInterrupts completionHandler:nil];
+        if (!player.isPlaying) {
+            [player play];
+        }
+    });
+}
+
+- (void)playTypewriterRatchet {
+    if (!_typewriterRatchetBuffer || _isMeetingMuted) return;
+    dispatch_async(_audioQueue, ^{
+        AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
+        self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
+        player.pan = self->_spatialAudioEnabled ? 0.25f : 0.0f;
+        player.volume = self->_masterVolume * 0.90f;
+        [player scheduleBuffer:self->_typewriterRatchetBuffer atTime:nil options:AVAudioPlayerNodeBufferInterrupts completionHandler:nil];
+        if (!player.isPlaying) {
+            [player play];
+        }
+    });
+}
+
 - (void)playKeyWithCategory:(ClackityKeyCategory)category keyCode:(int64_t)keyCode isKeyUp:(BOOL)isKeyUp {
     [self playBufferWithCategory:category keyCode:keyCode isKeyUp:isKeyUp];
+    
+    // Vintage Typewriter Mechanical Overlays
+    if (_typewriterModeEnabled && !isKeyUp && !_isMeetingMuted && _keySoundsEnabled) {
+        if (category == ClackityKeyCategoryEnter && _typewriterBellEnabled) {
+            [self playTypewriterBell];
+        } else if (category == ClackityKeyCategoryBackspace && _typewriterRatchetEnabled) {
+            [self playTypewriterRatchet];
+        }
+    }
 }
 
 - (void)playKeyWithCategory:(ClackityKeyCategory)category isKeyUp:(BOOL)isKeyUp {

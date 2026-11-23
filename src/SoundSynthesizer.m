@@ -356,4 +356,102 @@ typedef struct {
     return buffer;
 }
 
+#pragma mark - Vintage Typewriter Acoustics
+
++ (AVAudioPCMBuffer *)typewriterCarriageReturnBellBuffer {
+    const double sampleRate = 44100.0;
+    const double duration = 0.85; // 850ms sustained brass margin bell chime
+    AVAudioFormat *format = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:sampleRate channels:1];
+    AVAudioFrameCount frameCount = (AVAudioFrameCount)(sampleRate * duration);
+    AVAudioPCMBuffer *buffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:format frameCapacity:frameCount];
+    buffer.frameLength = frameCount;
+    
+    float *data = buffer.floatChannelData[0];
+    
+    // Modal frequencies for a 50mm stamped brass margin bell
+    const double f0 = 2489.0;    // Fundamental chime (D#7)
+    const double f0b = 2494.4;   // Beating twin (+5.4 Hz shimmering acoustic warble)
+    const double fHum = 1245.0;  // Sub-octave bell bowl resonance
+    const double fTierce = 2960.0; // Minor-third overtone
+    const double fQuint = 3730.0;  // Fifth mode
+    const double fNominal = 4980.0;// Octave ring
+    const double fHigh = 7460.0;   // Metallic edge ring
+    
+    for (AVAudioFrameCount i = 0; i < frameCount; i++) {
+        double t = (double)i / sampleRate;
+        
+        // Instantaneous 0.1ms hammer strike attack
+        double attack = (t < 0.00015) ? (t / 0.00015) : 1.0;
+        
+        // Initial hammer clapper strike transient (first 3ms)
+        double clapper = 0.0;
+        if (t < 0.0035) {
+            double env = exp(-t * 1400.0);
+            double noise = (((double)arc4random() / 0x7FFFFFFF) * 2.0 - 1.0) * 0.45;
+            clapper = 0.50 * env * (sin(2.0 * M_PI * 5400.0 * t) + noise);
+        }
+        
+        // Physical modal resonances with distinct decay rates
+        double chime = 0.0;
+        // Prime fundamental with gentle acoustic beating
+        chime += 0.55 * exp(-t * 5.2) * (sin(2.0 * M_PI * f0 * t) + 0.85 * sin(2.0 * M_PI * f0b * t));
+        // Deep bell body hum
+        chime += 0.22 * exp(-t * 6.5) * sin(2.0 * M_PI * fHum * t);
+        // Harmonic overtones
+        chime += 0.28 * exp(-t * 8.5) * sin(2.0 * M_PI * fTierce * t);
+        chime += 0.24 * exp(-t * 10.0) * sin(2.0 * M_PI * fQuint * t);
+        chime += 0.16 * exp(-t * 14.0) * sin(2.0 * M_PI * fNominal * t);
+        chime += 0.10 * exp(-t * 22.0) * sin(2.0 * M_PI * fHigh * t);
+        
+        double sample = attack * (clapper + chime) * 0.95;
+        data[i] = (float)tanh(sample);
+    }
+    
+    return buffer;
+}
+
++ (AVAudioPCMBuffer *)typewriterRatchetBuffer {
+    const double sampleRate = 44100.0;
+    const double duration = 0.055; // 55ms crisp escapement ratchet
+    AVAudioFormat *format = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:sampleRate channels:1];
+    AVAudioFrameCount frameCount = (AVAudioFrameCount)(sampleRate * duration);
+    AVAudioPCMBuffer *buffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:format frameCapacity:frameCount];
+    buffer.frameLength = frameCount;
+    
+    float *data = buffer.floatChannelData[0];
+    
+    for (AVAudioFrameCount i = 0; i < frameCount; i++) {
+        double t = (double)i / sampleRate;
+        double sample = 0.0;
+        
+        // Tooth 1 snap at t = 0ms: sharp pawl catch
+        if (t < 0.024) {
+            double t1 = t;
+            double attack = (t1 < 0.0002) ? (t1 / 0.0002) : 1.0;
+            double env = attack * exp(-t1 * 220.0);
+            double noise = (((double)arc4random() / 0x7FFFFFFF) * 2.0 - 1.0) * 0.35;
+            double tone = sin(2.0 * M_PI * 2350.0 * (1.0 + 0.3 * exp(-t1 * 300.0)) * t1);
+            sample += env * (tone + noise) * 0.70;
+        }
+        
+        // Tooth 2 seating at t = 16ms: pawl re-engages next ratchet tooth
+        if (t >= 0.016) {
+            double t2 = t - 0.016;
+            double attack = (t2 < 0.0002) ? (t2 / 0.0002) : 1.0;
+            double env = attack * exp(-t2 * 180.0);
+            double noise = (((double)arc4random() / 0x7FFFFFFF) * 2.0 - 1.0) * 0.25;
+            double tone = sin(2.0 * M_PI * 1820.0 * (1.0 + 0.25 * exp(-t2 * 250.0)) * t2);
+            sample += env * (tone + noise) * 0.85;
+        }
+        
+        // Hollow carriage frame chassis resonance
+        double bodyEnv = exp(-t * 90.0);
+        sample += 0.26 * bodyEnv * sin(2.0 * M_PI * 340.0 * t);
+        
+        data[i] = (float)tanh(sample * 1.05);
+    }
+    
+    return buffer;
+}
+
 @end

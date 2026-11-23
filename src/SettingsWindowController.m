@@ -337,6 +337,11 @@
 @property (nonatomic, strong) NSTextField *toneLabel;
 @property (nonatomic, strong) NSTextField *toneLowDbLabel;
 @property (nonatomic, strong) NSTextField *toneHighDbLabel;
+@property (nonatomic, strong) NSButton *typewriterModeCheck;
+@property (nonatomic, strong) NSButton *typewriterBellCheck;
+@property (nonatomic, strong) NSButton *typewriterRatchetCheck;
+@property (nonatomic, strong) NSButton *testBellBtn;
+@property (nonatomic, strong) NSButton *testRatchetBtn;
 @property (nonatomic, strong) NSButton *velocityDynamicsCheck;
 @property (nonatomic, strong) NSButton *secureInputCheck;
 @property (nonatomic, strong) NSButton *meetingMuteCheck;
@@ -813,7 +818,8 @@
 #pragma mark - Section 1: Acoustics & EQ
 
 - (FlippedView *)buildAcousticsView {
-    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, 560)];
+    CGFloat totalHeight = 720.0;
+    FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, totalHeight)];
     container.autoresizingMask = NSViewWidthSizable;
     CGFloat cardWidth = 495.0;
     CGFloat x = 20.0;
@@ -862,8 +868,53 @@
     eqDesc.autoresizingMask = NSViewWidthSizable;
     [eqCard addSubview:eqDesc];
     
-    // 2. Dynamic Strike Velocity & Spatial Audio (Y = 181, height = 115)
-    FlippedCardView *dynCard = [self cardContainerWithFrame:NSMakeRect(x, 181, cardWidth, 115)];
+    // 2. Vintage Typewriter Carriage Return & Ratchet Card (Y = 181, height = 152)
+    FlippedCardView *twCard = [self cardContainerWithFrame:NSMakeRect(x, 181, cardWidth, 152)];
+    [container addSubview:twCard];
+    
+    NSTextField *twTitle = [self labelWithText:@"Vintage Typewriter Carriage Return & Ratchet" bold:YES fontSize:13.5];
+    twTitle.frame = NSMakeRect(18, 14, 400, 18);
+    [twCard addSubview:twTitle];
+    
+    NSTextField *twDesc = [self labelWithText:@"Plays authentic brass margin bell chime on Return and mechanical pawl ratchet on Backspace." bold:NO fontSize:11];
+    twDesc.textColor = [NSColor secondaryLabelColor];
+    twDesc.frame = NSMakeRect(18, 36, 450, 16);
+    twDesc.autoresizingMask = NSViewWidthSizable;
+    [twCard addSubview:twDesc];
+    
+    self.typewriterModeCheck = [self checkboxWithTitle:@"Enable Vintage Typewriter Mode (Bell & Ratchet Overlay)" action:@selector(typewriterModeToggled:)];
+    self.typewriterModeCheck.frame = NSMakeRect(18, 60, 450, 20);
+    self.typewriterModeCheck.autoresizingMask = NSViewWidthSizable;
+    [twCard addSubview:self.typewriterModeCheck];
+    
+    self.typewriterBellCheck = [self checkboxWithTitle:@"Carriage Return Bell Chime (Ding! on Enter)" action:@selector(typewriterBellToggled:)];
+    self.typewriterBellCheck.frame = NSMakeRect(38, 86, 300, 20);
+    self.typewriterBellCheck.autoresizingMask = NSViewWidthSizable;
+    [twCard addSubview:self.typewriterBellCheck];
+    
+    self.testBellBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 135, 83, 115, 26)];
+    self.testBellBtn.title = @"Test Bell 🔔";
+    self.testBellBtn.bezelStyle = NSBezelStyleRounded;
+    self.testBellBtn.target = self;
+    self.testBellBtn.action = @selector(testBellClicked:);
+    self.testBellBtn.autoresizingMask = NSViewMinXMargin;
+    [twCard addSubview:self.testBellBtn];
+    
+    self.typewriterRatchetCheck = [self checkboxWithTitle:@"Escapement Pawl Ratchet (on Backspace)" action:@selector(typewriterRatchetToggled:)];
+    self.typewriterRatchetCheck.frame = NSMakeRect(38, 114, 300, 20);
+    self.typewriterRatchetCheck.autoresizingMask = NSViewWidthSizable;
+    [twCard addSubview:self.typewriterRatchetCheck];
+    
+    self.testRatchetBtn = [[NSButton alloc] initWithFrame:NSMakeRect(cardWidth - 135, 111, 115, 26)];
+    self.testRatchetBtn.title = @"Test Ratchet ⚙️";
+    self.testRatchetBtn.bezelStyle = NSBezelStyleRounded;
+    self.testRatchetBtn.target = self;
+    self.testRatchetBtn.action = @selector(testRatchetClicked:);
+    self.testRatchetBtn.autoresizingMask = NSViewMinXMargin;
+    [twCard addSubview:self.testRatchetBtn];
+    
+    // 3. Dynamic Strike Velocity & Spatial Audio (Y = 351, height = 115)
+    FlippedCardView *dynCard = [self cardContainerWithFrame:NSMakeRect(x, 351, cardWidth, 115)];
     [container addSubview:dynCard];
     
     NSTextField *dynTitle = [self labelWithText:@"Dynamics & Spatial Stereo Acoustics" bold:YES fontSize:13];
@@ -885,8 +936,8 @@
     self.muteModifiersCheck.autoresizingMask = NSViewWidthSizable;
     [dynCard addSubview:self.muteModifiersCheck];
     
-    // 3. Privacy & Meeting Intelligence (Y = 314, height = 85)
-    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 314, cardWidth, 85)];
+    // 4. Privacy & Meeting Intelligence (Y = 484, height = 85)
+    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 484, cardWidth, 85)];
     [container addSubview:privCard];
     
     NSTextField *privTitle = [self labelWithText:@"Privacy & Trigger Suppression" bold:YES fontSize:13];
@@ -903,8 +954,8 @@
     self.meetingMuteCheck.autoresizingMask = NSViewWidthSizable;
     [privCard addSubview:self.meetingMuteCheck];
     
-    // 4. Acoustic Trigger Controls (Y = 417, height = 115)
-    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 417, cardWidth, 115)];
+    // 5. Acoustic Trigger Controls (Y = 587, height = 115)
+    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 587, cardWidth, 115)];
     [container addSubview:trigCard];
     
     NSTextField *trigTitle = [self labelWithText:@"Detailed Audio Triggers" bold:YES fontSize:13];
@@ -1323,6 +1374,12 @@
     self.velocityDynamicsCheck.state = audio.velocityDynamicsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.forceClickCheck.state = audio.forceClickSoundEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     
+    // Vintage Typewriter
+    self.typewriterModeCheck.state = audio.typewriterModeEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.typewriterBellCheck.state = audio.typewriterBellEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.typewriterRatchetCheck.state = audio.typewriterRatchetEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [self updateTypewriterControlsState];
+    
     HapticEngine *haptic = [HapticEngine sharedEngine];
     self.hapticEnabledCheck.state = haptic.enabled ? NSControlStateValueOn : NSControlStateValueOff;
     
@@ -1548,6 +1605,47 @@
     [AudioEngine sharedEngine].toneBalance = val;
     [self updateToneLabelsForValue:val];
     [[NSUserDefaults standardUserDefaults] setFloat:val forKey:@"toneBalance"];
+}
+
+- (void)updateTypewriterControlsState {
+    BOOL on = [AudioEngine sharedEngine].typewriterModeEnabled;
+    self.typewriterBellCheck.enabled = on;
+    self.typewriterRatchetCheck.enabled = on;
+    self.testBellBtn.enabled = on;
+    self.testRatchetBtn.enabled = on;
+}
+
+- (void)typewriterModeToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [AudioEngine sharedEngine].typewriterModeEnabled = on;
+    [self updateTypewriterControlsState];
+    if (on) {
+        [[AudioEngine sharedEngine] playTypewriterBell];
+    }
+}
+
+- (void)typewriterBellToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [AudioEngine sharedEngine].typewriterBellEnabled = on;
+    if (on) {
+        [[AudioEngine sharedEngine] playTypewriterBell];
+    }
+}
+
+- (void)typewriterRatchetToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [AudioEngine sharedEngine].typewriterRatchetEnabled = on;
+    if (on) {
+        [[AudioEngine sharedEngine] playTypewriterRatchet];
+    }
+}
+
+- (void)testBellClicked:(NSButton *)sender {
+    [[AudioEngine sharedEngine] playTypewriterBell];
+}
+
+- (void)testRatchetClicked:(NSButton *)sender {
+    [[AudioEngine sharedEngine] playTypewriterRatchet];
 }
 
 - (void)updateHapticControlsState {

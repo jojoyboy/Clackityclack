@@ -18,6 +18,9 @@
 @property (nonatomic, assign) float toneBalance; // -1.0 (Thock / PE Foam) to +1.0 (Clack / Brass Plate)
 @property (nonatomic, assign) BOOL velocityDynamicsEnabled;
 @property (nonatomic, assign) BOOL forceClickSoundEnabled;
+@property (nonatomic, assign) BOOL typewriterModeEnabled;
+@property (nonatomic, assign) BOOL typewriterBellEnabled;
+@property (nonatomic, assign) BOOL typewriterRatchetEnabled;
 
 + (instancetype)sharedEngine;
 
@@ -29,6 +32,8 @@
 - (void)playMouseClick:(BOOL)isRightClick isUp:(BOOL)isUp;
 - (void)playScroll;
 - (void)playForceClickSound;
+- (void)playTypewriterBell;
+- (void)playTypewriterRatchet;
 - (void)toggleMute;
 
 - (void)reloadBuffers;
