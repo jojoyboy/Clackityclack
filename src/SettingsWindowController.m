@@ -1669,12 +1669,14 @@
 }
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    BOOL keepInDock = [[NSUserDefaults standardUserDefaults] boolForKey:@"showInDock"];
+    [NSApp setActivationPolicy:(keepInDock ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyAccessory)];
     return YES;
 }
 
 - (void)windowWillClose:(NSNotification *)notification {
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    BOOL keepInDock = [[NSUserDefaults standardUserDefaults] boolForKey:@"showInDock"];
+    [NSApp setActivationPolicy:(keepInDock ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyAccessory)];
 }
 
 #pragma mark - Actions

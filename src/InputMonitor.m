@@ -197,10 +197,9 @@ static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type, CGEv
         case kCGEventLeftMouseDown: {
             CGPoint location = CGEventGetLocation(event);
             double pressure = CGEventGetDoubleValueField(event, kCGMouseEventPressure);
-            int64_t clickState = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
             
-            // Detect Trackpad Force Touch / deep press
-            if (_forceClickSoundEnabled && (pressure >= 0.85 || clickState >= 3)) {
+            // Detect Trackpad Force Touch / deep press (ignore ordinary multi-clicks)
+            if (_forceClickSoundEnabled && pressure >= 0.85) {
                 if ([self.delegate respondsToSelector:@selector(inputMonitorDidDetectForceClickAtPoint:)]) {
                     [self.delegate inputMonitorDidDetectForceClickAtPoint:location];
                 }

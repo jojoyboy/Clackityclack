@@ -10,6 +10,7 @@ extern NSString * const ClackityUpdateCheckCompletedNotification;
 @property (nonatomic, copy) NSString *releaseNotes;
 @property (nonatomic, copy) NSString *htmlURL;
 @property (nonatomic, copy) NSString *zipDownloadURL;
+@property (nonatomic, copy, nullable) NSString *zipSHA256;
 @property (nonatomic, copy) NSString *pkgDownloadURL;
 @property (nonatomic, assign) BOOL isNewerVersion;
 

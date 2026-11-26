@@ -1,5 +1,6 @@
 #import "UpdateManager.h"
 #import <Cocoa/Cocoa.h>
+#import <CommonCrypto/CommonDigest.h>
 #import <spawn.h>
 #import <sys/stat.h>
 
@@ -143,6 +144,10 @@ static NSString * const kAutoCheckKey = @"autoCheckForUpdates";
                     NSString *downloadURL = asset[@"browser_download_url"];
                     if ([name hasSuffix:@".zip"] || [name containsString:@"Clackity-macOS"]) {
                         info.zipDownloadURL = downloadURL;
+                        NSString *digest = asset[@"digest"];
+                        if ([digest isKindOfClass:[NSString class]] && [digest hasPrefix:@"sha256:"]) {
+                            info.zipSHA256 = [[digest substringFromIndex:7] lowercaseString];
+                        }
                     } else if ([name hasSuffix:@".pkg"]) {
                         info.pkgDownloadURL = downloadURL;
                     }
@@ -311,7 +316,7 @@ static NSString * const kAutoCheckKey = @"autoCheckForUpdates";
             self.isDownloading = NO;
             [self showProgressWindowWithStatus:@"Installing update & relaunching..."];
             if (isZip) {
-                [self applyZipUpdateFromLocation:[NSURL fileURLWithPath:stagedDownloadPath] completion:completion];
+                [self applyZipUpdateFromLocation:[NSURL fileURLWithPath:stagedDownloadPath] expectedSHA256:releaseInfo.zipSHA256 completion:completion];
             } else {
                 [self hideProgressWindow];
                 [self applyPkgUpdateFromLocation:[NSURL fileURLWithPath:stagedDownloadPath] suggestedName:response.suggestedFilename completion:completion];
@@ -320,7 +325,102 @@ static NSString * const kAutoCheckKey = @"autoCheckForUpdates";
     }] resume];
 }
 
-- (void)applyZipUpdateFromLocation:(NSURL *)tempLocation completion:(void (^ _Nullable)(BOOL success, NSString * _Nullable errorMessage))completion {
+- (nullable NSString *)sha256ForFileAtPath:(NSString *)path {
+    NSData *data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
+    if (!data) return nil;
+    uint8_t digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    NSMutableString *hex = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
+    for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) {
+        [hex appendFormat:@"%02x", digest[i]];
+    }
+    return hex;
+}
+
+- (nullable NSDictionary<NSString *, NSString *> *)codeSigningInfoForBundleAtPath:(NSString *)bundlePath {
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = @"/usr/bin/codesign";
+    task.arguments = @[@"-dvv", bundlePath];
+    NSPipe *errPipe = [NSPipe pipe];
+    task.standardError = errPipe;
+    task.standardOutput = [NSPipe pipe];
+    @try {
+        [task launch];
+        [task waitUntilExit];
+    } @catch (NSException *ex) {
+        return nil;
+    }
+    if (task.terminationStatus != 0) return nil;
+    NSData *errData = [errPipe.fileHandleForReading readDataToEndOfFile];
+    NSString *output = [[NSString alloc] initWithData:errData encoding:NSUTF8StringEncoding];
+    NSMutableDictionary *info = [NSMutableDictionary dictionary];
+    for (NSString *line in [output componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+        NSRange eq = [line rangeOfString:@"="];
+        if (eq.location != NSNotFound) {
+            NSString *k = [line substringToIndex:eq.location];
+            NSString *v = [line substringFromIndex:eq.location + 1];
+            info[k] = v;
+        }
+    }
+    return info;
+}
+
+- (BOOL)verifyExtractedApp:(NSString *)newAppPath expectedBundleId:(NSString *)expectedBundleId errorMessage:(NSString **)errorOut {
+    // 1. Strict deep signature verification on the downloaded bundle as published
+    NSTask *verifyTask = [[NSTask alloc] init];
+    verifyTask.launchPath = @"/usr/bin/codesign";
+    verifyTask.arguments = @[@"--verify", @"--deep", @"--strict", newAppPath];
+    verifyTask.standardOutput = [NSPipe pipe];
+    verifyTask.standardError = [NSPipe pipe];
+    [verifyTask launch];
+    [verifyTask waitUntilExit];
+    if (verifyTask.terminationStatus != 0) {
+        if (errorOut) *errorOut = @"The downloaded application failed strict code signature verification.";
+        return NO;
+    }
+    
+    // 2. Verify bundle identifier & signing metadata match the running publisher
+    NSBundle *newBundle = [NSBundle bundleWithPath:newAppPath];
+    if (![newBundle.bundleIdentifier isEqualToString:expectedBundleId]) {
+        if (errorOut) *errorOut = @"The downloaded application's bundle identifier does not match Clackity.";
+        return NO;
+    }
+    
+    NSDictionary<NSString *, NSString *> *newSignInfo = [self codeSigningInfoForBundleAtPath:newAppPath];
+    if (![newSignInfo[@"Identifier"] isEqualToString:expectedBundleId]) {
+        if (errorOut) *errorOut = @"The downloaded application's signed identifier does not match Clackity.";
+        return NO;
+    }
+    
+    NSString *currentBundlePath = [[NSBundle mainBundle] bundlePath];
+    NSDictionary<NSString *, NSString *> *currentSignInfo = [self codeSigningInfoForBundleAtPath:currentBundlePath];
+    NSString *currentTeam = currentSignInfo[@"TeamIdentifier"];
+    if (currentTeam && currentTeam.length > 0 && ![currentTeam isEqualToString:@"not set"]) {
+        NSString *newTeam = newSignInfo[@"TeamIdentifier"];
+        if (![newTeam isEqualToString:currentTeam]) {
+            if (errorOut) *errorOut = @"The downloaded application is not signed by the same publisher team.";
+            return NO;
+        }
+    }
+    
+    return YES;
+}
+
+- (void)failZipUpdateWithTitle:(NSString *)title message:(NSString *)message cleanupPaths:(NSArray<NSString *> *)paths completion:(void (^ _Nullable)(BOOL, NSString * _Nullable))completion {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *p in paths) {
+        [fm removeItemAtPath:p error:nil];
+    }
+    [self hideProgressWindow];
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = title;
+    alert.informativeText = message;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    if (completion) completion(NO, message);
+}
+
+- (void)applyZipUpdateFromLocation:(NSURL *)tempLocation expectedSHA256:(nullable NSString *)expectedSHA256 completion:(void (^ _Nullable)(BOOL success, NSString * _Nullable errorMessage))completion {
     NSString *tempDir = NSTemporaryDirectory();
     NSString *zipPath = [tempDir stringByAppendingPathComponent:@"Clackity-Update.zip"];
     NSString *extractDir = [tempDir stringByAppendingPathComponent:@"Clackity-Update-Extracted"];
@@ -332,13 +432,20 @@ static NSString * const kAutoCheckKey = @"autoCheckForUpdates";
     NSError *moveErr = nil;
     [fm moveItemAtURL:tempLocation toURL:[NSURL fileURLWithPath:zipPath] error:&moveErr];
     if (moveErr) {
-        NSAlert *alert = [[NSAlert alloc] init];
-        alert.messageText = @"Update Failed";
-        alert.informativeText = moveErr.localizedDescription;
-        [alert addButtonWithTitle:@"OK"];
-        [alert runModal];
-        if (completion) completion(NO, moveErr.localizedDescription);
+        [self failZipUpdateWithTitle:@"Update Failed" message:moveErr.localizedDescription cleanupPaths:@[zipPath, extractDir] completion:completion];
         return;
+    }
+    
+    // Verify cryptographic SHA-256 digest from GitHub Release API if provided
+    if (expectedSHA256 && expectedSHA256.length == 64) {
+        NSString *actualSHA256 = [self sha256ForFileAtPath:zipPath];
+        if (![actualSHA256 isEqualToString:expectedSHA256.lowercaseString]) {
+            [self failZipUpdateWithTitle:@"Update Integrity Check Failed"
+                                 message:@"The downloaded archive's SHA-256 checksum does not match the official release."
+                            cleanupPaths:@[zipPath, extractDir]
+                              completion:completion];
+            return;
+        }
     }
     
     [fm createDirectoryAtPath:extractDir withIntermediateDirectories:YES attributes:nil error:nil];
@@ -349,10 +456,16 @@ static NSString * const kAutoCheckKey = @"autoCheckForUpdates";
     unzipTask.arguments = @[@"-x", @"-k", zipPath, extractDir];
     [unzipTask launch];
     [unzipTask waitUntilExit];
+    if (unzipTask.terminationStatus != 0) {
+        [self failZipUpdateWithTitle:@"Corrupt Update Archive"
+                             message:@"Failed to extract the downloaded update archive."
+                        cleanupPaths:@[zipPath, extractDir]
+                          completion:completion];
+        return;
+    }
     
     NSString *newAppPath = [extractDir stringByAppendingPathComponent:@"Clackity.app"];
     if (![fm fileExistsAtPath:newAppPath]) {
-        // Search inside subdirectories
         NSArray *subpaths = [fm subpathsAtPath:extractDir];
         for (NSString *sub in subpaths) {
             if ([sub hasSuffix:@"Clackity.app"]) {
@@ -363,75 +476,104 @@ static NSString * const kAutoCheckKey = @"autoCheckForUpdates";
     }
     
     if (![fm fileExistsAtPath:newAppPath]) {
-        NSAlert *alert = [[NSAlert alloc] init];
-        alert.messageText = @"Corrupt Update Archive";
-        alert.informativeText = @"The downloaded update package did not contain a valid Clackity.app bundle.";
-        [alert addButtonWithTitle:@"OK"];
-        [alert runModal];
-        if (completion) completion(NO, @"Extracted archive did not contain Clackity.app");
+        [self failZipUpdateWithTitle:@"Corrupt Update Archive"
+                             message:@"The downloaded update package did not contain a valid Clackity.app bundle."
+                        cleanupPaths:@[zipPath, extractDir]
+                          completion:completion];
         return;
     }
     
-    // Clear quarantine attribute
-    NSTask *xattrTask = [[NSTask alloc] init];
-    xattrTask.launchPath = @"/usr/bin/xattr";
-    xattrTask.arguments = @[@"-dr", @"com.apple.quarantine", newAppPath];
-    [xattrTask launch];
-    [xattrTask waitUntilExit];
-    
-    // Code sign extracted app bundle with persistent designated identifier
-    NSTask *signTask = [[NSTask alloc] init];
-    signTask.launchPath = @"/usr/bin/codesign";
-    signTask.arguments = @[@"-s", @"-", @"--force", @"--deep", @"--identifier", @"com.jojoyboy.Clackity", @"-r", @"designated => identifier \"com.jojoyboy.Clackity\"", newAppPath];
-    [signTask launch];
-    [signTask waitUntilExit];
+    // Verify publisher signature and bundle identity BEFORE modifying or installing anything
+    NSString *expectedBundleId = [[NSBundle mainBundle] bundleIdentifier] ?: @"com.jojoyboy.Clackity";
+    NSString *verifyErr = nil;
+    if (![self verifyExtractedApp:newAppPath expectedBundleId:expectedBundleId errorMessage:&verifyErr]) {
+        [self failZipUpdateWithTitle:@"Update Signature Verification Failed"
+                             message:(verifyErr ?: @"Could not verify the publisher signature of the update.")
+                        cleanupPaths:@[zipPath, extractDir]
+                          completion:completion];
+        return;
+    }
     
     NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
     NSString *targetAppPath = @"/Applications/Clackity.app";
     if ([bundlePath hasPrefix:@"/Applications"]) {
         targetAppPath = bundlePath;
     }
+    NSString *backupAppPath = [targetAppPath stringByAppendingString:@".backup"];
     
-    pid_t currentPid = [[NSProcessInfo processInfo] processIdentifier];
+    // Atomic backup-and-replace synchronously so we never report success or lose the working app on failure
+    [fm removeItemAtPath:backupAppPath error:nil];
+    BOOL hadExistingTarget = [fm fileExistsAtPath:targetAppPath];
+    BOOL replaced = NO;
+    NSError *replaceErr = nil;
     
-    // Create an atomic updater script
-    NSString *scriptPath = [tempDir stringByAppendingPathComponent:@"clackity_relaunch.sh"];
-    NSString *scriptContent = [NSString stringWithFormat:
-        @"#!/bin/bash\n"
-        @"exec > /tmp/clackity_update.log 2>&1\n"
-        @"PID=%d\n"
-        @"TARGET=\"%@\"\n"
-        @"NEW_APP=\"%@\"\n"
-        @"EXTRACT_DIR=\"%@\"\n"
-        @"ZIP_PATH=\"%@\"\n\n"
-        @"echo \"[Updater] Waiting for PID $PID to terminate...\"\n"
-        @"while kill -0 $PID 2>/dev/null; do\n"
-        @"    sleep 0.1\n"
-        @"done\n\n"
-        @"echo \"[Updater] Replacing $TARGET with $NEW_APP...\"\n"
-        @"if ! rm -rf \"$TARGET\" 2>/dev/null; then\n"
-        @"    echo \"[Updater] Permission denied. Requesting administrator authorization...\"\n"
-        @"    /usr/bin/osascript -e \"do shell script \\\"rm -rf '$TARGET' && cp -R '$NEW_APP' '$TARGET' && /usr/bin/xattr -cr '$TARGET'\\\" with administrator privileges\"\n"
-        @"else\n"
-        @"    cp -R \"$NEW_APP\" \"$TARGET\"\n"
-        @"    /usr/bin/xattr -cr \"$TARGET\" 2>/dev/null || true\n"
-        @"fi\n\n"
-        @"echo \"[Updater] Relaunching '$TARGET'...\"\n"
-        @"/usr/bin/open \"$TARGET\"\n"
-        @"rm -rf \"$EXTRACT_DIR\" \"$ZIP_PATH\" \"$0\"\n"
-        @"echo \"[Updater] Completed successfully!\"\n",
-        currentPid, targetAppPath, newAppPath, extractDir, zipPath];
+    if (!hadExistingTarget || [fm moveItemAtPath:targetAppPath toPath:backupAppPath error:&replaceErr]) {
+        NSTask *copyTask = [[NSTask alloc] init];
+        copyTask.launchPath = @"/usr/bin/ditto";
+        copyTask.arguments = @[newAppPath, targetAppPath];
+        [copyTask launch];
+        [copyTask waitUntilExit];
+        
+        NSString *execPath = [targetAppPath stringByAppendingPathComponent:@"Contents/MacOS/Clackity"];
+        if (copyTask.terminationStatus == 0 && [fm isExecutableFileAtPath:execPath]) {
+            replaced = YES;
+        } else {
+            // Roll back immediately so the working app is preserved
+            [fm removeItemAtPath:targetAppPath error:nil];
+            if (hadExistingTarget && [fm fileExistsAtPath:backupAppPath]) {
+                [fm moveItemAtPath:backupAppPath toPath:targetAppPath error:nil];
+            }
+        }
+    } else if (replaceErr.code == NSFileWriteNoPermissionError || replaceErr.code == NSFileReadNoPermissionError) {
+        // Request administrator authorization for atomic swap with rollback
+        NSString *escTarget = [targetAppPath stringByReplacingOccurrencesOfString:@"'" withString:@"'\\''"];
+        NSString *escBackup = [backupAppPath stringByReplacingOccurrencesOfString:@"'" withString:@"'\\''"];
+        NSString *escNew = [newAppPath stringByReplacingOccurrencesOfString:@"'" withString:@"'\\''"];
+        NSString *shellCmd = [NSString stringWithFormat:
+            @"rm -rf '%@' && mv '%@' '%@' && ( /usr/bin/ditto '%@' '%@' && rm -rf '%@' || ( rm -rf '%@'; mv '%@' '%@'; exit 1 ) )",
+            escBackup, escTarget, escBackup, escNew, escTarget, escBackup, escTarget, escBackup, escTarget];
+        NSString *escAppleScript = [shellCmd stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
+        escAppleScript = [escAppleScript stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
+        
+        NSTask *adminTask = [[NSTask alloc] init];
+        adminTask.launchPath = @"/usr/bin/osascript";
+        adminTask.arguments = @[@"-e", [NSString stringWithFormat:@"do shell script \"%@\" with administrator privileges", escAppleScript]];
+        [adminTask launch];
+        [adminTask waitUntilExit];
+        
+        NSString *execPath = [targetAppPath stringByAppendingPathComponent:@"Contents/MacOS/Clackity"];
+        if (adminTask.terminationStatus == 0 && [fm isExecutableFileAtPath:execPath]) {
+            replaced = YES;
+        }
+    }
     
-    [scriptContent writeToFile:scriptPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    chmod([scriptPath UTF8String], 0755);
+    if (!replaced) {
+        [self failZipUpdateWithTitle:@"Update Installation Failed"
+                             message:@"Could not replace Clackity.app. Your previous working version has been preserved."
+                        cleanupPaths:@[zipPath, extractDir]
+                          completion:completion];
+        return;
+    }
     
-    // Execute detached script using system / background runner
-    NSString *cmd = [NSString stringWithFormat:@"nohup /bin/bash \"%@\" > /dev/null 2>&1 &", scriptPath];
-    system([cmd UTF8String]);
+    // Clear quarantine only after verification and successful installation
+    NSTask *xattrTask = [[NSTask alloc] init];
+    xattrTask.launchPath = @"/usr/bin/xattr";
+    xattrTask.arguments = @[@"-dr", @"com.apple.quarantine", targetAppPath];
+    [xattrTask launch];
+    [xattrTask waitUntilExit];
     
+    [fm removeItemAtPath:backupAppPath error:nil];
+    [fm removeItemAtPath:extractDir error:nil];
+    [fm removeItemAtPath:zipPath error:nil];
+    
+    // Report success only after the replacement bundle is verified in place
     if (completion) completion(YES, nil);
     
-    // Terminate current app to allow seamless replacement
+    // Relaunch the newly installed bundle after this process exits
+    NSString *escTarget = [targetAppPath stringByReplacingOccurrencesOfString:@"'" withString:@"'\\''"];
+    NSString *relaunchCmd = [NSString stringWithFormat:@"nohup /bin/sh -c 'sleep 0.4; /usr/bin/open -n \"$1\"' _ '%@' >/dev/null 2>&1 &", escTarget];
+    system([relaunchCmd UTF8String]);
+    
     [NSApp terminate:nil];
 }
 

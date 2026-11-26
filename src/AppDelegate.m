@@ -25,9 +25,6 @@
     // Disable automatic termination since Clackity is a standing menu bar utility
     [[NSProcessInfo processInfo] disableAutomaticTermination:@"Clackity runs continuously in the menu bar"];
     
-    // Hide dock icon, run cleanly as menu bar accessory
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-    
     // Load persisted settings
     NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
     [defs registerDefaults:@{
@@ -52,15 +49,16 @@
     }];
     
     BOOL showInDock = [defs boolForKey:@"showInDock"];
-    if (!showInDock) {
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-    }
+    [NSApp setActivationPolicy:(showInDock ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyAccessory)];
     
     AudioEngine *audio = [AudioEngine sharedEngine];
     audio.currentProfile = (ClackitySoundProfile)[defs integerForKey:@"selectedProfile"];
     
-    NSString *customPackName = [defs stringForKey:@"selectedCustomPack"];
-    if (customPackName) {
+    id savedCustomPackObj = [defs objectForKey:@"selectedCustomPack"];
+    id savedProfileObj = [defs objectForKey:@"selectedProfile"];
+    
+    if ([savedCustomPackObj isKindOfClass:[NSString class]] && [(NSString *)savedCustomPackObj length] > 0) {
+        NSString *customPackName = (NSString *)savedCustomPackObj;
         for (CustomSoundPack *pack in [SoundPackManager sharedManager].customPacks) {
             if ([pack.name isEqualToString:customPackName]) {
                 audio.customPack = pack;
@@ -69,8 +67,9 @@
         }
     }
     
-    // If not found or stale preference, default to authentic Holy Panda studio pack
-    if (!audio.customPack && [SoundPackManager sharedManager].customPacks.count > 0) {
+    // Only auto-select a default studio pack if the user has never explicitly chosen a synthesized profile
+    BOOL hasExplicitSynthesizedSelection = (savedCustomPackObj == nil && savedProfileObj != nil);
+    if (!audio.customPack && !hasExplicitSynthesizedSelection && [SoundPackManager sharedManager].customPacks.count > 0) {
         for (CustomSoundPack *pack in [SoundPackManager sharedManager].customPacks) {
             if ([pack.name containsString:@"Holy Panda"] || [pack.name containsString:@"NovelKeys Cream"]) {
                 audio.customPack = pack;
