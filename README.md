@@ -9,6 +9,15 @@ A high-performance, bloat-free native macOS menu bar companion that brings acous
 
 Engineered with 100% native Cocoa, CoreAudio, and Metal — with **zero Electron bloat**, **zero web runtimes**, **zero telemetry**, and an ultra-lean **<2.5 MB RAM footprint**.
 
+<div align="center">
+  <a href="https://raw.githubusercontent.com/jojoyboy/Clackityclack/main/assets/clackity-demo.mp4">
+    <img src="assets/clackity-demo-thumb.png" alt="Clackity Product Demo Showcase" width="100%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.4);" />
+  </a>
+  <p>
+    <em>🎬 <strong><a href="https://raw.githubusercontent.com/jojoyboy/Clackityclack/main/assets/clackity-demo.mp4">Click to watch 1080p Product Showcase Demo (with audio)</a></strong> · Featuring Holy Panda, NovelKeys Cream, IBM Model M, and Hemingway Typewriter Margin Bell & Carriage Return.</em>
+  </p>
+</div>
+
 ---
 
 ## 📦 Download & Installation
