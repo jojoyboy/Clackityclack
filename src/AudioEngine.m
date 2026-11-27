@@ -489,7 +489,7 @@
 }
 
 - (void)playSpringPing {
-    if (!_springPingBuffer || _isMeetingMuted) return;
+    if (!_springPingBuffer || _isMeetingMuted || _isGamingMuted) return;
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
@@ -503,7 +503,7 @@
 }
 
 - (void)playBufferWithCategory:(ClackityKeyCategory)category keyCode:(int64_t)keyCode isKeyUp:(BOOL)isKeyUp {
-    if (_isMeetingMuted) return;
+    if (_isMeetingMuted || _isGamingMuted) return;
     if (!_keySoundsEnabled && category <= ClackityKeyCategoryModifier) return;
     if (isKeyUp && !_keyUpSoundsEnabled) return;
     if (category == ClackityKeyCategoryModifier && _muteModifiers) return;
@@ -607,7 +607,7 @@
 }
 
 - (void)playTypewriterBell {
-    if (!_typewriterBellBuffer || _isMeetingMuted) return;
+    if (!_typewriterBellBuffer || _isMeetingMuted || _isGamingMuted) return;
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
@@ -622,7 +622,7 @@
 }
 
 - (void)playTypewriterCarriageReturn {
-    if (!_typewriterReturnBuffer || _isMeetingMuted) return;
+    if (!_typewriterReturnBuffer || _isMeetingMuted || _isGamingMuted) return;
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
@@ -637,7 +637,7 @@
 }
 
 - (void)playTypewriterRatchet {
-    if (!_typewriterRatchetBuffer || _isMeetingMuted) return;
+    if (!_typewriterRatchetBuffer || _isMeetingMuted || _isGamingMuted) return;
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
@@ -654,12 +654,12 @@
     [self playBufferWithCategory:category keyCode:keyCode isKeyUp:isKeyUp];
     
     // Helical Spring Ping Resonance on Switch Release (KeyUp)
-    if (isKeyUp && _springPingEnabled && !_isMeetingMuted && _keySoundsEnabled && category <= ClackityKeyCategoryModifier) {
+    if (isKeyUp && _springPingEnabled && !_isMeetingMuted && !_isGamingMuted && _keySoundsEnabled && category <= ClackityKeyCategoryModifier) {
         [self playSpringPing];
     }
     
     // Authentic Vintage Typewriter Mechanics
-    if (_typewriterModeEnabled && !isKeyUp && !_isMeetingMuted && _keySoundsEnabled) {
+    if (_typewriterModeEnabled && !isKeyUp && !_isMeetingMuted && !_isGamingMuted && _keySoundsEnabled) {
         if (category == ClackityKeyCategoryEnter) {
             // Carriage Return on Enter
             if (_typewriterReturnGlideEnabled) {
@@ -695,19 +695,19 @@
 }
 
 - (void)playMouseClick:(BOOL)isRightClick isUp:(BOOL)isUp {
-    if (_isMeetingMuted || !_mouseSoundsEnabled) return;
+    if (_isMeetingMuted || _isGamingMuted || !_mouseSoundsEnabled) return;
     ClackityKeyCategory cat = isRightClick ? ClackityKeyCategoryMouseRight : ClackityKeyCategoryMouseLeft;
     int64_t dummyCode = isRightClick ? 36 : 48; // slight spatial stereo offset for mouse buttons
     [self playBufferWithCategory:cat keyCode:dummyCode isKeyUp:isUp];
 }
 
 - (void)playScroll {
-    if (_isMeetingMuted || !_scrollSoundsEnabled) return;
+    if (_isMeetingMuted || _isGamingMuted || !_scrollSoundsEnabled) return;
     [self playBufferWithCategory:ClackityKeyCategoryMouseScroll keyCode:49 isKeyUp:NO];
 }
 
 - (void)playForceClickSound {
-    if (_isMeetingMuted || !_mouseSoundsEnabled || !_forceClickSoundEnabled) return;
+    if (_isMeetingMuted || _isGamingMuted || !_mouseSoundsEnabled || !_forceClickSoundEnabled) return;
     [self playBufferWithCategory:ClackityKeyCategoryEnter keyCode:36 isKeyUp:NO];
 }
 

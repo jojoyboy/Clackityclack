@@ -27,6 +27,13 @@ static void mixAudio(AVAudioPCMBuffer *buf, double startTimeSec, float volume, f
     
     float *srcL = buf.floatChannelData[0];
     float *srcR = (buf.format.channelCount > 1) ? buf.floatChannelData[1] : srcL;
+    float peak = 0.0f;
+    for (AVAudioFrameCount sample = 0; sample < buf.frameLength; sample++) {
+        peak = fmaxf(peak, fmaxf(fabsf(srcL[sample]), fabsf(srcR[sample])));
+    }
+    if (peak < 0.001f) return;
+    lGain /= peak;
+    rGain /= peak;
     
     for (int i = 0; i < (int)buf.frameLength; i++) {
         int idx = startSample + i;
@@ -138,111 +145,43 @@ int main(int argc, char *argv[]) {
         audioR = (float *)calloc(TOTAL_SAMPLES, sizeof(float));
         
         // 2. Load Real Audio Assets
-        AVAudioPCMBuffer *hpR0 = loadAudio(@"Resources/SoundPacks/Holy Panda (Studio Tactile)/GENERIC_R0.mp3");
-        AVAudioPCMBuffer *hpR1 = loadAudio(@"Resources/SoundPacks/Holy Panda (Studio Tactile)/GENERIC_R1.mp3");
-        AVAudioPCMBuffer *hpR2 = loadAudio(@"Resources/SoundPacks/Holy Panda (Studio Tactile)/GENERIC_R2.mp3");
-        AVAudioPCMBuffer *hpEnter = loadAudio(@"Resources/SoundPacks/Holy Panda (Studio Tactile)/ENTER.mp3");
-        AVAudioPCMBuffer *hpSpace = loadAudio(@"Resources/SoundPacks/Holy Panda (Studio Tactile)/SPACE.mp3");
+        AVAudioPCMBuffer *holyPanda = loadAudio(@"Resources/Previews/holy-panda.wav");
         
         AVAudioPCMBuffer *nkKey0 = loadAudio(@"Resources/SoundPacks/NovelKeys Cream (Studio POM)/key_0.wav");
         AVAudioPCMBuffer *nkKey1 = loadAudio(@"Resources/SoundPacks/NovelKeys Cream (Studio POM)/key_1.wav");
-        AVAudioPCMBuffer *nkEnter = loadAudio(@"Resources/SoundPacks/NovelKeys Cream (Studio POM)/enter.wav");
         AVAudioPCMBuffer *nkSpace = loadAudio(@"Resources/SoundPacks/NovelKeys Cream (Studio POM)/space.wav");
         
         AVAudioPCMBuffer *modelM = [SoundSynthesizer bufferForProfile:ClackitySoundProfileModelM category:ClackityKeyCategoryStandard isKeyUp:NO variation:0];
-        AVAudioPCMBuffer *modelMEnter = [SoundSynthesizer bufferForProfile:ClackitySoundProfileModelM category:ClackityKeyCategoryEnter isKeyUp:NO variation:0];
         
         AVAudioPCMBuffer *twKey = [SoundSynthesizer bufferForProfile:ClackitySoundProfileTypewriter category:ClackityKeyCategoryStandard isKeyUp:NO variation:0];
         AVAudioPCMBuffer *twBell = [SoundSynthesizer typewriterMarginBellBuffer];
         AVAudioPCMBuffer *twCarriage = [SoundSynthesizer typewriterCarriageReturnBuffer];
-        AVAudioPCMBuffer *springPing = [SoundSynthesizer springPingBuffer];
-        
-        // --- AUDIO TRACK COMPOSITION ---
-        // Scene 1: Hero Double Clack
-        mixAudio(hpR0, 0.8, 0.85, -0.15);
-        mixAudio(hpR1, 0.95, 0.90, 0.15);
-        mixAudio(springPing, 2.2, 0.65, 0.2);
-        
-        // Scene 2: Code Editor Typing (3.5s - 9.0s)
+
         const char *codeText = "AudioEngine *engine = [AudioEngine sharedEngine];\n[engine playKey:HolyPanda withCategory:Enter];";
         int len = (int)strlen(codeText);
-        double t = 3.6;
-        for (int i = 0; i < len; i++) {
-            char c = codeText[i];
-            float pan = ((float)(i % 5) - 2.0f) * 0.18f;
-            if (c == '\n') {
-                mixAudio(hpEnter ?: hpR0, t, 0.95, 0.3);
-                t += 0.28;
-            } else if (c == ' ') {
-                mixAudio(hpSpace ?: hpR0, t, 0.85, 0.0);
-                t += 0.12;
-            } else {
-                AVAudioPCMBuffer *pick = (i % 3 == 0) ? hpR0 : ((i % 3 == 1) ? hpR1 : hpR2);
-                mixAudio(pick, t, 0.80, pan);
-                t += 0.095 + (float)(i % 4) * 0.015;
-            }
-        }
-        // Mouse click at 8.0s
-        mixAudio(hpR0, 8.0, 0.75, 0.0);
-        
-        // Scene 3: NovelKeys Cream (9.0s - 11.5s)
-        const char *nkText = "NovelKeys Cream POM: smooth, buttery thock.";
-        int nkLen = (int)strlen(nkText);
-        t = 9.2;
-        for (int i = 0; i < nkLen; i++) {
-            char c = nkText[i];
-            float pan = ((float)(i % 5) - 2.0f) * 0.15f;
-            if (c == ' ') {
-                mixAudio(nkSpace ?: nkKey0, t, 0.90, 0.0);
-                t += 0.14;
-            } else {
-                AVAudioPCMBuffer *pick = (i % 2 == 0) ? nkKey0 : nkKey1;
-                mixAudio(pick ?: hpR0, t, 0.85, pan);
-                t += 0.10 + (float)(i % 3) * 0.015;
-            }
-        }
-        
-        // Scene 3: IBM Model M (11.5s - 14.5s)
-        const char *ibmText = "IBM Model M: iconic buckling spring & steel snap.";
-        int ibmLen = (int)strlen(ibmText);
-        t = 11.8;
-        for (int i = 0; i < ibmLen; i++) {
-            char c = ibmText[i];
-            float pan = ((float)(i % 5) - 2.0f) * 0.18f;
-            if (c == ' ') {
-                mixAudio(modelM, t, 0.90, 0.0);
-                t += 0.14;
-            } else {
-                mixAudio(modelM, t, 0.85, pan);
-                t += 0.105 + (float)(i % 3) * 0.02;
-            }
-        }
-        
-        // Scene 4: Vintage Typewriter Mode (14.5s - 19.5s)
         const char *twText = "The sun also rises in the morning over the misty blue hills of Paris";
-        int twLen = (int)strlen(twText);
-        t = 14.7;
-        for (int i = 0; i < twLen; i++) {
-            char c = twText[i];
-            float pan = ((float)(i % 5) - 2.0f) * 0.2f;
-            mixAudio(twKey, t, 0.80, pan);
-            t += (c == ' ') ? 0.12 : 0.075;
-        }
-        // Authentic Margin Bell DING! at 17.6s
-        mixAudio(twBell, 17.6, 0.95, 0.25);
-        // User presses Enter -> Carriage Return Glide ka-chunk at 18.2s
-        mixAudio(twCarriage, 18.2, 0.95, -0.15);
-        
-        // Scene 5: CLI & Outro (19.5s - 24.0s)
-        const char *cliText = "brew install --cask jojoyboy/clackity/clackity";
-        int cliLen = (int)strlen(cliText);
-        t = 19.8;
-        for (int i = 0; i < cliLen; i++) {
-            mixAudio(hpR0, t, 0.75, ((i % 5) - 2) * 0.1f);
-            t += 0.045;
-        }
-        mixAudio(hpEnter, 21.9, 0.90, 0.2);
-        mixAudio(springPing, 22.0, 0.60, 0.0);
+
+        mixAudio(holyPanda, 3.9, 0.24, -0.18);
+        mixAudio(holyPanda, 4.25, 0.21, 0.12);
+        mixAudio(holyPanda, 4.62, 0.23, -0.05);
+        mixAudio(holyPanda, 6.6, 0.24, -0.15);
+        mixAudio(holyPanda, 6.92, 0.21, 0.15);
+        mixAudio(holyPanda, 7.5, 0.22, 0.0);
+        mixAudio(holyPanda, 8.0, 0.18, 0.0);
+
+        mixAudio(nkKey0, 9.3, 0.24, -0.12);
+        mixAudio(nkKey1, 9.85, 0.24, 0.12);
+        mixAudio(nkSpace ?: nkKey0, 10.5, 0.22, 0.0);
+
+        mixAudio(modelM, 11.85, 0.22, -0.12);
+        mixAudio(modelM, 12.5, 0.22, 0.12);
+        mixAudio(modelM, 13.25, 0.22, 0.0);
+
+        mixAudio(twKey, 14.95, 0.20, -0.12);
+        mixAudio(twKey, 15.45, 0.20, 0.12);
+        mixAudio(twKey, 16.1, 0.20, 0.0);
+        mixAudio(twBell, 17.6, 0.14, 0.0);
+        mixAudio(twCarriage, 18.2, 0.18, 0.0);
         
         // Save Audio
         saveWav(@"build.noindex/demo_audio.wav");
@@ -251,7 +190,7 @@ int main(int argc, char *argv[]) {
         // --- 3. VIDEO FRAME RENDERING PIPELINE ---
         CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
         uint8_t *pixelBuffer = (uint8_t *)calloc(WIDTH * HEIGHT * 4, 1);
-        CGContextRef ctx = CGBitmapContextCreate(pixelBuffer, WIDTH, HEIGHT, 8, WIDTH * 4, colorSpace, kCGImageAlphaPremultipliedLast);
+        CGContextRef ctx = CGBitmapContextCreate(pixelBuffer, WIDTH, HEIGHT, 8, WIDTH * 4, colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
         
         NSGraphicsContext *nsCtx = [NSGraphicsContext graphicsContextWithCGContext:ctx flipped:YES];
         [NSGraphicsContext setCurrentContext:nsCtx];
@@ -275,7 +214,7 @@ int main(int argc, char *argv[]) {
                 0.0, 0.0, 0.0, 0.0
             };
             CGGradientRef radGrad = CGGradientCreateWithColorComponents(colorSpace, radColors, NULL, 2);
-            CGContextDrawRadialGradient(ctx, radGrad, CGPointMake(WIDTH/2, HEIGHT/2 - 50), 50, CGPointMake(WIDTH/2, HEIGHT/2 - 50), 750, 0);
+            CGContextDrawRadialGradient(ctx, radGrad, CGPointMake(WIDTH/2, HEIGHT/2 - 50), 0, CGPointMake(WIDTH/2, HEIGHT/2 - 50), 750, 0);
             CGGradientRelease(radGrad);
             CGContextRestoreGState(ctx);
             
@@ -434,11 +373,14 @@ int main(int argc, char *argv[]) {
                 NSString *curTitle = isNK ? @"Auditioning: NovelKeys Cream (POM Linear)" : @"Auditioning: IBM Model M (Buckling Spring)";
                 drawText(curTitle, 310, 630, [NSFont systemFontOfSize:22 weight:NSFontWeightBold], [NSColor whiteColor]);
                 
-                // Draw 48 dynamic animated EQ bars
-                for (int b = 0; b < 48; b++) {
-                    CGFloat wave = sin(time * 16.0 + b * 0.45) * cos(time * 8.0 - b * 0.25);
-                    CGFloat barH = 20.0 + fabs(wave) * 90.0;
-                    CGFloat barX = 310 + b * 27;
+                for (int bar = 0; bar < 48; bar++) {
+                    int sample = (int)((time - (47 - bar) * 0.025) * SAMPLE_RATE);
+                    float peak = 0.0f;
+                    for (int offset = 0; offset < SAMPLE_RATE / 40; offset++) {
+                        peak = fmaxf(peak, fmaxf(fabsf(audioL[sample + offset]), fabsf(audioR[sample + offset])));
+                    }
+                    CGFloat barH = 5.0 + fminf(peak * 4.0f, 1.0f) * 100.0;
+                    CGFloat barX = 310 + bar * 27;
                     CGFloat barY = 800 - barH;
                     NSColor *barCol = isNK ? [NSColor colorWithCalibratedRed:0.2 green:0.75 blue:1.0 alpha:0.85] : [NSColor colorWithCalibratedRed:1.0 green:0.6 blue:0.2 alpha:0.85];
                     drawRoundedRect(ctx, CGRectMake(barX, barY, 18, barH), 6, barCol, nil, 0);
@@ -474,7 +416,7 @@ int main(int argc, char *argv[]) {
                     CGRect bellBanner = CGRectMake(420, 420, 1080, 95);
                     drawRoundedRect(ctx, bellBanner, 16, [NSColor colorWithCalibratedRed:0.28 green:0.20 blue:0.10 alpha:0.9], [NSColor colorWithCalibratedRed:1.0 green:0.78 blue:0.25 alpha:0.9], 2.0);
                     
-                    drawText(@"🔔 MARGIN WARNING BELL DING! (Column 72 Reached)", 460, 442, [NSFont systemFontOfSize:24 weight:NSFontWeightBold], [NSColor colorWithCalibratedRed:1.0 green:0.85 blue:0.3 alpha:1.0]);
+                    drawText(@"Margin bell", 460, 442, [NSFont systemFontOfSize:24 weight:NSFontWeightBold], [NSColor colorWithCalibratedRed:1.0 green:0.85 blue:0.3 alpha:1.0]);
                     drawText(@"Acoustic cast-iron chime (1864 Hz Bb6 with 410 Hz body coupling)", 460, 475, [NSFont systemFontOfSize:16 weight:NSFontWeightRegular], [NSColor colorWithCalibratedWhite:0.8 alpha:1.0]);
                 }
                 
@@ -483,7 +425,7 @@ int main(int argc, char *argv[]) {
                     CGRect crBanner = CGRectMake(420, 535, 1080, 95);
                     drawRoundedRect(ctx, crBanner, 16, [NSColor colorWithCalibratedRed:0.12 green:0.22 blue:0.16 alpha:0.9], [NSColor colorWithCalibratedRed:0.3 green:0.85 blue:0.5 alpha:0.9], 2.0);
                     
-                    drawText(@"💨 CARRIAGE RETURN GLIDE (Return Key Pressed)", 460, 557, [NSFont systemFontOfSize:24 weight:NSFontWeightBold], [NSColor colorWithCalibratedRed:0.4 green:0.95 blue:0.6 alpha:1.0]);
+                    drawText(@"Carriage return", 460, 557, [NSFont systemFontOfSize:24 weight:NSFontWeightBold], [NSColor colorWithCalibratedRed:0.4 green:0.95 blue:0.6 alpha:1.0]);
                     drawText(@"Whirrr-ka-chunk! Mechanical platen ratchet, rail slide, and bumper impact", 460, 590, [NSFont systemFontOfSize:16 weight:NSFontWeightRegular], [NSColor colorWithCalibratedWhite:0.8 alpha:1.0]);
                 }
                 

@@ -22,6 +22,7 @@ typedef NS_ENUM(NSInteger, ClackityRoomAcousticPreset) {
 @property (nonatomic, assign) BOOL muteModifiers;
 @property (nonatomic, assign) BOOL spatialAudioEnabled;
 @property (nonatomic, assign) BOOL isMeetingMuted;
+@property (nonatomic, assign) BOOL isGamingMuted;
 @property (nonatomic, assign) float toneBalance; // -1.0 (Thock / PE Foam) to +1.0 (Clack / Brass Plate)
 @property (nonatomic, assign) BOOL velocityDynamicsEnabled;
 @property (nonatomic, assign) BOOL forceClickSoundEnabled;

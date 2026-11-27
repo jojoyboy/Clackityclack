@@ -3,7 +3,7 @@ CFLAGS = -fobjc-arc -O2 -Wall -Wno-deprecated-declarations -mmacosx-version-min=
 FRAMEWORKS = -framework Cocoa -framework AVFoundation -framework AudioToolbox -framework QuartzCore -framework ApplicationServices -framework ServiceManagement -framework Carbon -framework UniformTypeIdentifiers
 
 APP_NAME = Clackity
-VERSION = 1.0.3
+VERSION := $(shell /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)
 BUILD_DIR = build.noindex
 APP_BUNDLE = $(BUILD_DIR)/$(APP_NAME).app
 CONTENTS_DIR = $(APP_BUNDLE)/Contents
@@ -61,6 +61,7 @@ $(APP_BUNDLE): $(OBJS) Resources/Info.plist
 	@echo "==> Applying persistent identifier code signature..."
 	@codesign -s - --force --deep --identifier "com.jojoyboy.Clackity" -r='designated => identifier "com.jojoyboy.Clackity"' $(APP_BUNDLE)
 	@/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u $(APP_BUNDLE) 2>/dev/null || true
+	@touch $(APP_BUNDLE)
 	@echo "==> Successfully created $(APP_BUNDLE)"
 
 zip: app

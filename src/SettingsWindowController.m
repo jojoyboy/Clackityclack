@@ -357,6 +357,7 @@
 @property (nonatomic, strong) NSButton *velocityDynamicsCheck;
 @property (nonatomic, strong) NSButton *secureInputCheck;
 @property (nonatomic, strong) NSButton *meetingMuteCheck;
+@property (nonatomic, strong) NSButton *gamingMuteCheck;
 @property (nonatomic, strong) NSButton *spatialAudioCheck;
 @property (nonatomic, strong) NSButton *muteModifiersCheck;
 @property (nonatomic, strong) NSButton *keyDownCheck;
@@ -844,7 +845,7 @@
 #pragma mark - Section 1: Acoustics & EQ
 
 - (FlippedView *)buildAcousticsView {
-    CGFloat totalHeight = 955.0;
+    CGFloat totalHeight = 980.0;
     FlippedView *container = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, totalHeight)];
     container.autoresizingMask = NSViewWidthSizable;
     CGFloat cardWidth = 495.0;
@@ -1029,8 +1030,8 @@
     self.muteModifiersCheck.autoresizingMask = NSViewWidthSizable;
     [dynCard addSubview:self.muteModifiersCheck];
     
-    // 5. Privacy & Meeting Intelligence (Y = 721, height = 85)
-    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 721, cardWidth, 85)];
+    // 5. Privacy & Meeting Intelligence (Y = 721, height = 110)
+    FlippedCardView *privCard = [self cardContainerWithFrame:NSMakeRect(x, 721, cardWidth, 110)];
     [container addSubview:privCard];
     
     NSTextField *privTitle = [self labelWithText:@"Privacy & Trigger Suppression" bold:YES fontSize:13];
@@ -1047,8 +1048,13 @@
     self.meetingMuteCheck.autoresizingMask = NSViewWidthSizable;
     [privCard addSubview:self.meetingMuteCheck];
     
-    // 6. Acoustic Trigger Controls (Y = 824, height = 115)
-    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 824, cardWidth, 115)];
+    self.gamingMuteCheck = [self checkboxWithTitle:@"Gaming Mode: Auto-mute in games (Steam, Epic, macOS Games)" action:@selector(gamingMuteToggled:)];
+    self.gamingMuteCheck.frame = NSMakeRect(18, 82, 450, 20);
+    self.gamingMuteCheck.autoresizingMask = NSViewWidthSizable;
+    [privCard addSubview:self.gamingMuteCheck];
+    
+    // 6. Acoustic Trigger Controls (Y = 849, height = 115)
+    FlippedCardView *trigCard = [self cardContainerWithFrame:NSMakeRect(x, 849, cardWidth, 115)];
     [container addSubview:trigCard];
     
     NSTextField *trigTitle = [self labelWithText:@"Detailed Audio Triggers" bold:YES fontSize:13];
@@ -1310,7 +1316,7 @@
     self.launchAtLoginCheck.frame = NSMakeRect(18, 38, 400, 20);
     [sysCard addSubview:self.launchAtLoginCheck];
     
-    self.showInDockCheck = [self checkboxWithTitle:@"Keep icon in macOS Dock (visible even if Menu Bar is full)" action:@selector(showInDockToggled:)];
+    self.showInDockCheck = [self checkboxWithTitle:@"Show Dock icon while Settings is open" action:@selector(showInDockToggled:)];
     self.showInDockCheck.frame = NSMakeRect(18, 66, 440, 20);
     [sysCard addSubview:self.showInDockCheck];
     
@@ -1601,6 +1607,7 @@
     self.muteModifiersCheck.state = audio.muteModifiers ? NSControlStateValueOn : NSControlStateValueOff;
     self.spatialAudioCheck.state = audio.spatialAudioEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.meetingMuteCheck.state = delegate.autoMuteInMeetingsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.gamingMuteCheck.state = delegate.autoMuteInGamesEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     
     // Visuals
     self.rippleEnabledCheck.state = ripple.enabled ? NSControlStateValueOn : NSControlStateValueOff;
@@ -1668,15 +1675,8 @@
     [self.window makeKeyAndOrderFront:nil];
 }
 
-- (BOOL)windowShouldClose:(NSWindow *)sender {
-    BOOL keepInDock = [[NSUserDefaults standardUserDefaults] boolForKey:@"showInDock"];
-    [NSApp setActivationPolicy:(keepInDock ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyAccessory)];
-    return YES;
-}
-
 - (void)windowWillClose:(NSNotification *)notification {
-    BOOL keepInDock = [[NSUserDefaults standardUserDefaults] boolForKey:@"showInDock"];
-    [NSApp setActivationPolicy:(keepInDock ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyAccessory)];
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 }
 
 #pragma mark - Actions
@@ -2014,6 +2014,15 @@
         [AudioEngine sharedEngine].isMeetingMuted = NO;
     }
     [[NSUserDefaults standardUserDefaults] setBool:on forKey:@"autoMuteInMeetings"];
+    [[MenuBarController sharedController] updateStatusItem];
+}
+
+- (void)gamingMuteToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    AppDelegate *del = (AppDelegate *)[NSApp delegate];
+    del.autoMuteInGamesEnabled = on;
+    [[NSUserDefaults standardUserDefaults] setBool:on forKey:@"autoMuteInGames"];
+    [del refreshGamingModeForApp:nil];
     [[MenuBarController sharedController] updateStatusItem];
 }
 

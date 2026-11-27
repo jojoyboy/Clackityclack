@@ -37,6 +37,8 @@
         @"muteModifiers": @NO,
         @"spatialAudioEnabled": @YES,
         @"autoMuteInMeetings": @YES,
+        @"autoMuteInGames": @YES,
+        @"manualGamingMode": @NO,
         @"rippleEnabled": @YES,
         @"rippleColorTheme": @(ClackityRippleColorElectricCyan),
         @"secureInputProtection": @YES,
@@ -47,9 +49,6 @@
         @"menuBarDisplayStyle": @(0),
         @"showInDock": @NO
     }];
-    
-    BOOL showInDock = [defs boolForKey:@"showInDock"];
-    [NSApp setActivationPolicy:(showInDock ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyAccessory)];
     
     AudioEngine *audio = [AudioEngine sharedEngine];
     audio.currentProfile = (ClackitySoundProfile)[defs integerForKey:@"selectedProfile"];
@@ -95,8 +94,11 @@
     audio.forceClickSoundEnabled = [defs boolForKey:@"forceClickSound"];
     
     self.autoMuteInMeetingsEnabled = [defs boolForKey:@"autoMuteInMeetings"];
+    self.autoMuteInGamesEnabled = [defs boolForKey:@"autoMuteInGames"];
+    self.manualGamingModeEnabled = [defs boolForKey:@"manualGamingMode"];
     self.contextAwareProfilesEnabled = [defs boolForKey:@"contextAwareProfiles"];
     self.menuBarDisplayStyle = [defs integerForKey:@"menuBarDisplayStyle"];
+    [self refreshGamingModeForApp:[NSWorkspace sharedWorkspace].frontmostApplication];
     
     RippleOverlay *ripple = [RippleOverlay sharedOverlay];
     ripple.enabled = [defs boolForKey:@"rippleEnabled"];
@@ -189,8 +191,57 @@
         [[MenuBarController sharedController] updateStatusItem];
     }
     
-    // 2. App-Specific & Context-Aware Profile Switching
+    // 2. Gaming Mode Auto-Mute Check
+    [self refreshGamingModeForApp:app];
+    
+    // 3. App-Specific & Context-Aware Profile Switching
     [[AppProfileManager sharedManager] handleActiveApplicationChanged:app];
+}
+
+- (BOOL)isGameApplication:(nullable NSRunningApplication *)app {
+    if (!app) return NO;
+    NSString *bundleId = app.bundleIdentifier.lowercaseString ?: @"";
+    NSString *bundlePath = app.bundleURL.path.lowercaseString ?: @"";
+    
+    if ([bundlePath containsString:@"/steamapps/"] ||
+        [bundlePath containsString:@"/epic games/"] ||
+        [bundlePath containsString:@"/riot games/"] ||
+        [bundlePath containsString:@"/applications/games/"]) {
+        return YES;
+    }
+    
+    NSArray<NSString *> *gamePrefixes = @[
+        @"com.valvesoftware.", @"com.epicgames.", @"com.riotgames.",
+        @"net.battle.", @"com.blizzard.", @"com.roblox.",
+        @"com.mojang.", @"net.minecraft", @"com.nvidia.gfnpc",
+        @"org.openemu.", @"org.dolphin-emu.", @"com.libretro.retroarch",
+        @"com.feralinteractive.", @"com.aspyr.", @"com.larian.",
+        @"com.larianstudios.", @"jp.co.capcom."
+    ];
+    for (NSString *prefix in gamePrefixes) {
+        if ([bundleId hasPrefix:prefix]) return YES;
+    }
+    
+    if (app.bundleURL) {
+        NSBundle *bundle = [NSBundle bundleWithURL:app.bundleURL];
+        NSString *category = [bundle.infoDictionary[@"LSApplicationCategoryType"] lowercaseString];
+        if ([category containsString:@"games"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (void)refreshGamingModeForApp:(nullable NSRunningApplication *)app {
+    NSRunningApplication *targetApp = app ?: [NSWorkspace sharedWorkspace].frontmostApplication;
+    BOOL autoGameDetected = self.autoMuteInGamesEnabled && [self isGameApplication:targetApp];
+    BOOL shouldMute = self.manualGamingModeEnabled || autoGameDetected;
+    
+    AudioEngine *audio = [AudioEngine sharedEngine];
+    if (audio.isGamingMuted != shouldMute) {
+        audio.isGamingMuted = shouldMute;
+        [[MenuBarController sharedController] updateStatusItem];
+    }
 }
 
 - (void)updateCheckCompleted:(NSNotification *)notification {
@@ -212,9 +263,10 @@
 #pragma mark - InputMonitorDelegate
 
 - (void)inputMonitorDidDetectKeyWithCategory:(ClackityKeyCategory)category keyCode:(int64_t)keyCode isKeyUp:(BOOL)isKeyUp {
-    [[AudioEngine sharedEngine] playKeyWithCategory:category keyCode:keyCode isKeyUp:isKeyUp];
+    AudioEngine *audio = [AudioEngine sharedEngine];
+    [audio playKeyWithCategory:category keyCode:keyCode isKeyUp:isKeyUp];
     
-    if (!isKeyUp) {
+    if (!isKeyUp && !audio.isGamingMuted) {
         [[HapticEngine sharedEngine] triggerKeyHaptic];
     }
     
@@ -268,18 +320,22 @@
 }
 
 - (void)inputMonitorDidDetectMouseClickAtPoint:(CGPoint)screenPoint isRightClick:(BOOL)isRightClick isUp:(BOOL)isUp {
-    [[AudioEngine sharedEngine] playMouseClick:isRightClick isUp:isUp];
+    AudioEngine *audio = [AudioEngine sharedEngine];
+    [audio playMouseClick:isRightClick isUp:isUp];
     
-    if (!isUp) {
+    if (!isUp && !audio.isGamingMuted) {
         [[HapticEngine sharedEngine] triggerMouseHaptic];
         [[RippleOverlay sharedOverlay] showRippleAtScreenPoint:screenPoint isRightClick:isRightClick];
     }
 }
 
 - (void)inputMonitorDidDetectForceClickAtPoint:(CGPoint)screenPoint {
-    [[AudioEngine sharedEngine] playForceClickSound];
-    [[HapticEngine sharedEngine] triggerMouseHaptic];
-    [[RippleOverlay sharedOverlay] showRippleAtScreenPoint:screenPoint isRightClick:YES];
+    AudioEngine *audio = [AudioEngine sharedEngine];
+    [audio playForceClickSound];
+    if (!audio.isGamingMuted) {
+        [[HapticEngine sharedEngine] triggerMouseHaptic];
+        [[RippleOverlay sharedOverlay] showRippleAtScreenPoint:screenPoint isRightClick:YES];
+    }
 }
 
 - (void)inputMonitorDidDetectScroll {
@@ -388,6 +444,18 @@
             audio.typewriterModeEnabled = on;
             if (on) [audio playTypewriterCarriageReturn];
         }
+    } else if ([host isEqualToString:@"gaming"]) {
+        NSString *enabled = params[@"enabled"] ?: params[@"state"];
+        if ([enabled isEqualToString:@"toggle"]) {
+            self.manualGamingModeEnabled = !self.manualGamingModeEnabled;
+        } else if (enabled) {
+            self.manualGamingModeEnabled = [enabled boolValue] || [enabled isEqualToString:@"1"] || [enabled localizedCaseInsensitiveContainsString:@"true"] || [enabled localizedCaseInsensitiveContainsString:@"on"];
+        } else {
+            self.manualGamingModeEnabled = !self.manualGamingModeEnabled;
+        }
+        [[NSUserDefaults standardUserDefaults] setBool:self.manualGamingModeEnabled forKey:@"manualGamingMode"];
+        [self refreshGamingModeForApp:nil];
+        [[MenuBarController sharedController] updateStatusItem];
     } else if ([host isEqualToString:@"settings"]) {
         [NSApp activateIgnoringOtherApps:YES];
         [[SettingsWindowController sharedController] showSettingsWindow:nil];

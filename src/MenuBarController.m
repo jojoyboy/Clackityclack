@@ -114,9 +114,17 @@
                                                                 attributes:@{NSFontAttributeName: [NSFont boldSystemFontOfSize:13]}];
     [_menu addItem:titleItem];
     
-    // 2. Status / Meeting Mode Indicator
+    // 2. Status / Meeting / Gaming Mode Indicator
     if (hasAccess) {
-        if (audio.isMeetingMuted) {
+        if (audio.isGamingMuted) {
+            NSMenuItem *gameNotice = [[NSMenuItem alloc] initWithTitle:@"🎮 Gaming Mode Active (Silenced)" action:nil keyEquivalent:@""];
+            gameNotice.attributedTitle = [[NSAttributedString alloc] initWithString:@"🎮 Gaming Mode Active (Silenced)"
+                                                                         attributes:@{
+                NSForegroundColorAttributeName: [NSColor systemPurpleColor],
+                NSFontAttributeName: [NSFont boldSystemFontOfSize:11]
+            }];
+            [_menu addItem:gameNotice];
+        } else if (audio.isMeetingMuted) {
             NSMenuItem *muteNotice = [[NSMenuItem alloc] initWithTitle:@"🔇 Muted (Meeting in Foreground)" action:nil keyEquivalent:@""];
             muteNotice.attributedTitle = [[NSAttributedString alloc] initWithString:@"🔇 Muted (Meeting Active)"
                                                                          attributes:@{
@@ -277,13 +285,21 @@
     volSubmenuItem.submenu = volMenu;
     [_menu addItem:volSubmenuItem];
     
-    // 5. Quick Mute Audio Toggle
+    // 5. Quick Mute Audio & Gaming Mode Toggles
     NSMenuItem *muteItem = [[NSMenuItem alloc] initWithTitle:@"Mute Audio (⌘⇧\\)"
                                                       action:@selector(toggleMuteAudio:)
                                                keyEquivalent:@""];
     muteItem.target = self;
-    muteItem.state = (audio.masterVolume <= 0.001f || audio.isMeetingMuted) ? NSControlStateValueOn : NSControlStateValueOff;
+    muteItem.state = (audio.masterVolume <= 0.001f || audio.isMeetingMuted || audio.isGamingMuted) ? NSControlStateValueOn : NSControlStateValueOff;
     [_menu addItem:muteItem];
+    
+    AppDelegate *delegate = (AppDelegate *)[NSApp delegate];
+    NSMenuItem *gamingItem = [[NSMenuItem alloc] initWithTitle:@"🎮 Gaming Mode (Mute All)"
+                                                        action:@selector(toggleGamingMode:)
+                                                 keyEquivalent:@"g"];
+    gamingItem.target = self;
+    gamingItem.state = delegate.manualGamingModeEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [_menu addItem:gamingItem];
     
     [_menu addItem:[NSMenuItem separatorItem]];
     
@@ -354,6 +370,14 @@
 
 - (void)toggleMuteAudio:(id)sender {
     [[AudioEngine sharedEngine] toggleMute];
+    [self rebuildMenu];
+}
+
+- (void)toggleGamingMode:(id)sender {
+    AppDelegate *del = (AppDelegate *)[NSApp delegate];
+    del.manualGamingModeEnabled = !del.manualGamingModeEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:del.manualGamingModeEnabled forKey:@"manualGamingMode"];
+    [del refreshGamingModeForApp:nil];
     [self rebuildMenu];
 }
 
