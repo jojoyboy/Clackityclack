@@ -317,13 +317,6 @@
     settingsItem.target = self;
     [_menu addItem:settingsItem];
     
-    // 6.5 Contribute...
-    NSMenuItem *contributeItem = [[NSMenuItem alloc] initWithTitle:@"Contribute..."
-                                                            action:@selector(openContribute:)
-                                                     keyEquivalent:@""];
-    contributeItem.target = self;
-    [_menu addItem:contributeItem];
-    
     [_menu addItem:[NSMenuItem separatorItem]];
     
     // 7. Quit Clackity
@@ -383,10 +376,6 @@
 
 - (void)openSettings:(id)sender {
     [[SettingsWindowController sharedController] showSettingsWindow:nil];
-}
-
-- (void)openContribute:(id)sender {
-    [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://razorpay.me/@jojoyboy"]];
 }
 
 - (void)openSoundPacksStore:(id)sender {
