@@ -305,4 +305,114 @@
     }
 }
 
+- (nullable NSString *)findPackRootInDirectory:(NSString *)dir {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    // 1. Direct config.json or audio files in dir
+    if ([fm fileExistsAtPath:[dir stringByAppendingPathComponent:@"config.json"]]) {
+        return dir;
+    }
+    NSArray<NSString *> *audioExts = @[@"wav", @"mp3", @"m4a", @"aiff", @"caf"];
+    for (NSString *item in [fm contentsOfDirectoryAtPath:dir error:nil]) {
+        if ([audioExts containsObject:item.pathExtension.lowercaseString]) {
+            return dir;
+        }
+    }
+    // 2. Search immediate subdirectories (common when unzipping a zip with a wrapper folder)
+    for (NSString *sub in [fm subpathsAtPath:dir]) {
+        if ([sub containsString:@"__MACOSX"] || [sub.lastPathComponent hasPrefix:@"."]) continue;
+        NSString *full = [dir stringByAppendingPathComponent:sub];
+        BOOL isDir = NO;
+        if ([fm fileExistsAtPath:full isDirectory:&isDir] && isDir) {
+            if ([fm fileExistsAtPath:[full stringByAppendingPathComponent:@"config.json"]]) {
+                return full;
+            }
+            for (NSString *item in [fm contentsOfDirectoryAtPath:full error:nil]) {
+                if ([audioExts containsObject:item.pathExtension.lowercaseString]) {
+                    return full;
+                }
+            }
+        }
+    }
+    return nil;
+}
+
+- (nullable CustomSoundPack *)importPackFromURL:(NSURL *)url error:(NSError * _Nullable * _Nullable)error {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *srcPath = url.path;
+    BOOL isDir = NO;
+    if (![fm fileExistsAtPath:srcPath isDirectory:&isDir]) {
+        if (error) *error = [NSError errorWithDomain:@"ClackitySoundPack" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Selected file or folder does not exist."}];
+        return nil;
+    }
+    
+    NSString *tempExtractDir = nil;
+    NSString *candidateDir = srcPath;
+    
+    if (!isDir && [srcPath.pathExtension.lowercaseString isEqualToString:@"zip"]) {
+        tempExtractDir = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"clackity_import_%@", [[NSUUID UUID] UUIDString]]];
+        [fm createDirectoryAtPath:tempExtractDir withIntermediateDirectories:YES attributes:nil error:nil];
+        
+        NSTask *unzip = [[NSTask alloc] init];
+        unzip.launchPath = @"/usr/bin/ditto";
+        unzip.arguments = @[@"-x", @"-k", srcPath, tempExtractDir];
+        [unzip launch];
+        [unzip waitUntilExit];
+        if (unzip.terminationStatus != 0) {
+            [fm removeItemAtPath:tempExtractDir error:nil];
+            if (error) *error = [NSError errorWithDomain:@"ClackitySoundPack" code:2 userInfo:@{NSLocalizedDescriptionKey: @"Could not extract the .zip archive."}];
+            return nil;
+        }
+        candidateDir = tempExtractDir;
+    } else if (!isDir) {
+        if (error) *error = [NSError errorWithDomain:@"ClackitySoundPack" code:3 userInfo:@{NSLocalizedDescriptionKey: @"Please drop or select a Mechvibes/Sound Pack folder or .zip archive."}];
+        return nil;
+    }
+    
+    NSString *packRoot = [self findPackRootInDirectory:candidateDir];
+    if (!packRoot) {
+        if (tempExtractDir) [fm removeItemAtPath:tempExtractDir error:nil];
+        if (error) *error = [NSError errorWithDomain:@"ClackitySoundPack" code:4 userInfo:@{NSLocalizedDescriptionKey: @"No config.json or supported audio files (.wav, .mp3, .m4a) were found in this pack."}];
+        return nil;
+    }
+    
+    // Derive pack name from config.json if available, else folder/zip name
+    NSString *packName = [[url.lastPathComponent stringByDeletingPathExtension] copy];
+    NSData *cfgData = [NSData dataWithContentsOfFile:[packRoot stringByAppendingPathComponent:@"config.json"]];
+    if (cfgData) {
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:cfgData options:0 error:nil];
+        if ([json isKindOfClass:[NSDictionary class]] && [json[@"name"] isKindOfClass:[NSString class]] && [json[@"name"] length] > 0) {
+            packName = json[@"name"];
+        }
+    }
+    packName = [[packName stringByReplacingOccurrencesOfString:@"/" withString:@"-"] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (packName.length == 0) packName = @"Imported Sound Pack";
+    
+    NSString *destPath = [[self soundPacksDirectory] stringByAppendingPathComponent:packName];
+    [fm removeItemAtPath:destPath error:nil];
+    
+    NSError *copyErr = nil;
+    if (![fm copyItemAtPath:packRoot toPath:destPath error:&copyErr]) {
+        if (tempExtractDir) [fm removeItemAtPath:tempExtractDir error:nil];
+        if (error) *error = copyErr;
+        return nil;
+    }
+    
+    if (tempExtractDir) [fm removeItemAtPath:tempExtractDir error:nil];
+    
+    CustomSoundPack *testPack = [[CustomSoundPack alloc] initWithName:packName folderPath:destPath];
+    if (![testPack loadBuffers]) {
+        [fm removeItemAtPath:destPath error:nil];
+        if (error) *error = [NSError errorWithDomain:@"ClackitySoundPack" code:5 userInfo:@{NSLocalizedDescriptionKey: @"Pack contained no readable keystroke audio samples."}];
+        return nil;
+    }
+    
+    [self rescanPacks];
+    for (CustomSoundPack *p in _customPacks) {
+        if ([p.folderPath isEqualToString:destPath] || [p.name isEqualToString:testPack.name]) {
+            return p;
+        }
+    }
+    return testPack;
+}
+
 @end

@@ -7,6 +7,7 @@
 #import "AppDelegate.h"
 #import "MenuBarController.h"
 #import "HapticEngine.h"
+#import "HardwareMonitor.h"
 #import "AppProfileManager.h"
 #import <ServiceManagement/ServiceManagement.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -14,11 +15,30 @@
 #pragma mark - Flipped Views for Natural Top-Down Layout
 
 @interface FlippedView : NSView
+@property (nonatomic, copy, nullable) void (^onFilesDropped)(NSArray<NSURL *> *urls);
 @end
 
 @implementation FlippedView
 - (BOOL)isFlipped {
     return YES;
+}
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+    if (!self.onFilesDropped) return NSDragOperationNone;
+    NSPasteboard *pb = [sender draggingPasteboard];
+    if ([pb canReadObjectForClasses:@[[NSURL class]] options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}]) {
+        return NSDragOperationCopy;
+    }
+    return NSDragOperationNone;
+}
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    if (!self.onFilesDropped) return NO;
+    NSPasteboard *pb = [sender draggingPasteboard];
+    NSArray<NSURL *> *urls = [pb readObjectsForClasses:@[[NSURL class]] options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+    if (urls.count > 0) {
+        self.onFilesDropped(urls);
+        return YES;
+    }
+    return NO;
 }
 @end
 
@@ -373,6 +393,9 @@
 @property (nonatomic, strong) NSButton *hapticOnMouseCheck;
 @property (nonatomic, strong) NSButton *testHapticBtn;
 @property (nonatomic, strong) NSButton *forceClickCheck;
+@property (nonatomic, strong) NSButton *hardwareAwareCheck;
+@property (nonatomic, strong) NSPopUpButton *externalActionPopUp;
+@property (nonatomic, strong) NSTextField *hardwareStatusLabel;
 
 // Section 2: Click Visuals
 @property (nonatomic, strong) FlippedView *visualsSectionView;
@@ -448,6 +471,10 @@
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(appProfileDidChangeNotification:)
                                                      name:ClackityAppProfileDidChangeNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(hardwareDidChangeNotification:)
+                                                     name:ClackityHardwareDidChangeNotification
                                                    object:nil];
     }
     return self;
@@ -641,6 +668,11 @@
 
 - (FlippedView *)buildSwitchesView {
     self.switchesSectionView = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 535, 600)];
+    __weak typeof(self) weakSelf = self;
+    self.switchesSectionView.onFilesDropped = ^(NSArray<NSURL *> *urls) {
+        [weakSelf importDroppedPackURLs:urls];
+    };
+    [self.switchesSectionView registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
     self.switchCardViews = [NSMutableArray array];
     [self reloadSwitchesList];
     return self.switchesSectionView;
@@ -1174,7 +1206,41 @@
     hwBadge.autoresizingMask = NSViewWidthSizable;
     [forceCard addSubview:hwBadge];
     
-    container.frame = NSMakeRect(0, 0, 535, 430);
+    // 3. Hardware-Aware Keyboard Detection (Y = 422, height = 140)
+    FlippedCardView *hwCard = [self cardContainerWithFrame:NSMakeRect(x, 422, cardWidth, 140)];
+    hwCard.autoresizingMask = NSViewWidthSizable;
+    [container addSubview:hwCard];
+    
+    NSTextField *hwTitle = [self labelWithText:@"Hardware-Aware Auto-Switching" bold:YES fontSize:13.5];
+    hwTitle.frame = NSMakeRect(18, 14, 340, 18);
+    [hwCard addSubview:hwTitle];
+    
+    self.hardwareAwareCheck = [self checkboxWithTitle:@"Auto-detect external USB / Bluetooth keyboards" action:@selector(hardwareAwareToggled:)];
+    self.hardwareAwareCheck.frame = NSMakeRect(18, 38, 450, 20);
+    self.hardwareAwareCheck.autoresizingMask = NSViewWidthSizable;
+    [hwCard addSubview:self.hardwareAwareCheck];
+    
+    NSTextField *extActionLabel = [self labelWithText:@"When External Keyboard Connected:" bold:NO fontSize:11.5];
+    extActionLabel.frame = NSMakeRect(20, 68, 210, 18);
+    [hwCard addSubview:extActionLabel];
+    
+    self.externalActionPopUp = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(232, 64, cardWidth - 252, 26) pullsDown:NO];
+    [self.externalActionPopUp addItemsWithTitles:@[
+        @"Suppress Trackpad Haptics Only (Keep Audio)",
+        @"Suppress Haptics & Soften Audio (50%)",
+        @"Suppress Haptics & Mute All Audio"
+    ]];
+    self.externalActionPopUp.target = self;
+    self.externalActionPopUp.action = @selector(externalActionChanged:);
+    self.externalActionPopUp.autoresizingMask = NSViewWidthSizable;
+    [hwCard addSubview:self.externalActionPopUp];
+    
+    self.hardwareStatusLabel = [self labelWithText:@"💻 Active Keyboard: Built-in MacBook Keyboard" bold:NO fontSize:11];
+    self.hardwareStatusLabel.frame = NSMakeRect(20, 104, cardWidth - 40, 18);
+    self.hardwareStatusLabel.autoresizingMask = NSViewWidthSizable;
+    [hwCard addSubview:self.hardwareStatusLabel];
+    
+    container.frame = NSMakeRect(0, 0, 535, 580);
     return container;
 }
 
@@ -1277,19 +1343,32 @@
     [view addSubview:scrollView];
     
     // Bottom Controls (Y = 462)
-    NSButton *openFolderBtn = [[NSButton alloc] initWithFrame:NSMakeRect(20, 462, 190, 28)];
-    openFolderBtn.title = @"📁 Open Packs Folder...";
+    NSButton *openFolderBtn = [[NSButton alloc] initWithFrame:NSMakeRect(20, 462, 165, 28)];
+    openFolderBtn.title = @"📁 Packs Folder...";
     openFolderBtn.bezelStyle = NSBezelStyleRounded;
     openFolderBtn.target = self;
     openFolderBtn.action = @selector(openPacksDirectoryClicked:);
     [view addSubview:openFolderBtn];
     
-    NSButton *refreshBtn = [[NSButton alloc] initWithFrame:NSMakeRect(345, 462, 170, 28)];
+    NSButton *importBtn = [[NSButton alloc] initWithFrame:NSMakeRect(193, 462, 165, 28)];
+    importBtn.title = @"📥 Import Pack / Zip...";
+    importBtn.bezelStyle = NSBezelStyleRounded;
+    importBtn.target = self;
+    importBtn.action = @selector(importSoundPackClicked:);
+    [view addSubview:importBtn];
+    
+    NSButton *refreshBtn = [[NSButton alloc] initWithFrame:NSMakeRect(366, 462, 149, 28)];
     refreshBtn.title = @"↻ Refresh Catalog";
     refreshBtn.bezelStyle = NSBezelStyleRounded;
     refreshBtn.target = self;
     refreshBtn.action = @selector(refreshCommunityPacksClicked:);
     [view addSubview:refreshBtn];
+    
+    __weak typeof(self) weakSelf = self;
+    view.onFilesDropped = ^(NSArray<NSURL *> *urls) {
+        [weakSelf importDroppedPackURLs:urls];
+    };
+    [view registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
     
     [self filterAndReloadPacksTable];
     return view;
@@ -1603,6 +1682,18 @@
     self.hapticOnKeyCheck.state = haptic.hapticOnKeyPress ? NSControlStateValueOn : NSControlStateValueOff;
     self.hapticOnMouseCheck.state = haptic.hapticOnMouseClick ? NSControlStateValueOn : NSControlStateValueOff;
     [self updateHapticControlsState];
+    
+    HardwareMonitor *hw = [HardwareMonitor sharedMonitor];
+    self.hardwareAwareCheck.state = hw.enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [self.externalActionPopUp selectItemAtIndex:hw.externalAction];
+    self.externalActionPopUp.enabled = hw.enabled;
+    if (hw.hasExternalKeyboard) {
+        self.hardwareStatusLabel.stringValue = [NSString stringWithFormat:@"⌨️ External Keyboard Detected: %@", hw.externalKeyboardName ?: @"USB / Bluetooth"];
+        self.hardwareStatusLabel.textColor = [NSColor systemBlueColor];
+    } else {
+        self.hardwareStatusLabel.stringValue = @"💻 Active Keyboard: Built-in MacBook Keyboard";
+        self.hardwareStatusLabel.textColor = [NSColor systemGreenColor];
+    }
     self.secureInputCheck.state = [InputMonitor sharedMonitor].secureInputProtectionEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.muteModifiersCheck.state = audio.muteModifiers ? NSControlStateValueOn : NSControlStateValueOff;
     self.spatialAudioCheck.state = audio.spatialAudioEnabled ? NSControlStateValueOn : NSControlStateValueOff;
@@ -2241,6 +2332,77 @@
     NSString *packsDir = [appSupport stringByAppendingPathComponent:@"Clackity/SoundPacks"];
     [[NSFileManager defaultManager] createDirectoryAtPath:packsDir withIntermediateDirectories:YES attributes:nil error:nil];
     [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:packsDir]];
+}
+
+- (void)hardwareAwareToggled:(NSButton *)sender {
+    BOOL on = (sender.state == NSControlStateValueOn);
+    [HardwareMonitor sharedMonitor].enabled = on;
+    self.externalActionPopUp.enabled = on;
+}
+
+- (void)externalActionChanged:(NSPopUpButton *)sender {
+    [HardwareMonitor sharedMonitor].externalAction = (ClackityExternalKeyboardAction)sender.indexOfSelectedItem;
+}
+
+- (void)hardwareDidChangeNotification:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self syncUIFromState];
+    });
+}
+
+- (void)importSoundPackClicked:(id)sender {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.title = @"Import Mechvibes or Custom Sound Pack";
+    panel.message = @"Select a sound pack folder (containing config.json or .wav/.mp3 files) or a .zip archive.";
+    panel.prompt = @"Import Pack";
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = YES;
+    panel.allowsMultipleSelection = YES;
+    panel.allowedContentTypes = @[UTTypeFolder, UTTypeZIP];
+    
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
+        if (result == NSModalResponseOK && panel.URLs.count > 0) {
+            [self importDroppedPackURLs:panel.URLs];
+        }
+    }];
+}
+
+- (void)importDroppedPackURLs:(NSArray<NSURL *> *)urls {
+    SoundPackManager *mgr = [SoundPackManager sharedManager];
+    CustomSoundPack *lastImported = nil;
+    NSMutableArray<NSString *> *errors = [NSMutableArray array];
+    
+    for (NSURL *url in urls) {
+        NSError *err = nil;
+        CustomSoundPack *pack = [mgr importPackFromURL:url error:&err];
+        if (pack) {
+            lastImported = pack;
+        } else if (err) {
+            [errors addObject:[NSString stringWithFormat:@"%@: %@", url.lastPathComponent, err.localizedDescription]];
+        }
+    }
+    
+    if (lastImported) {
+        AudioEngine *audio = [AudioEngine sharedEngine];
+        audio.customPack = lastImported;
+        [[NSUserDefaults standardUserDefaults] setObject:lastImported.name forKey:@"selectedCustomPack"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:ClackitySoundPacksDidChangeNotification object:nil];
+        [self syncUIFromState];
+        [[MenuBarController sharedController] updateStatusItem];
+        [audio playKeyWithCategory:ClackityKeyCategoryEnter isKeyUp:NO];
+        
+        NSAlert *ok = [[NSAlert alloc] init];
+        ok.messageText = @"Sound Pack Imported!";
+        ok.informativeText = [NSString stringWithFormat:@"\"%@\" has been installed and activated.", lastImported.name];
+        [ok addButtonWithTitle:@"Awesome"];
+        [ok beginSheetModalForWindow:self.window completionHandler:nil];
+    } else if (errors.count > 0) {
+        NSAlert *fail = [[NSAlert alloc] init];
+        fail.messageText = @"Could Not Import Sound Pack";
+        fail.informativeText = [errors componentsJoinedByString:@"\n"];
+        [fail addButtonWithTitle:@"OK"];
+        [fail beginSheetModalForWindow:self.window completionHandler:nil];
+    }
 }
 
 - (void)rippleEnabledToggled:(NSButton *)sender {

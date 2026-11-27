@@ -1,4 +1,5 @@
 #import "AudioEngine.h"
+#import "HardwareMonitor.h"
 #import <mach/mach_time.h>
 
 #define VOICE_POOL_SIZE 24
@@ -489,7 +490,7 @@
 }
 
 - (void)playSpringPing {
-    if (!_springPingBuffer || _isMeetingMuted || _isGamingMuted) return;
+    if (!_springPingBuffer || _isMeetingMuted || _isGamingMuted || [[HardwareMonitor sharedMonitor] shouldMuteAudio]) return;
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
@@ -503,7 +504,7 @@
 }
 
 - (void)playBufferWithCategory:(ClackityKeyCategory)category keyCode:(int64_t)keyCode isKeyUp:(BOOL)isKeyUp {
-    if (_isMeetingMuted || _isGamingMuted) return;
+    if (_isMeetingMuted || _isGamingMuted || [[HardwareMonitor sharedMonitor] shouldMuteAudio]) return;
     if (!_keySoundsEnabled && category <= ClackityKeyCategoryModifier) return;
     if (isKeyUp && !_keyUpSoundsEnabled) return;
     if (category == ClackityKeyCategoryModifier && _muteModifiers) return;
@@ -564,9 +565,10 @@
             player.pan = 0.0f;
         }
         
-        // Micro-gain dynamic acoustic randomization + velocity strike
+        // Micro-gain dynamic acoustic randomization + velocity strike + hardware-aware scaling
+        float hwScale = [[HardwareMonitor sharedMonitor] volumeMultiplier];
         float randomVolumeVariance = 0.94f + (float)arc4random_uniform(120) / 1000.0f; // 0.94 - 1.06
-        player.volume = self->_masterVolume * randomVolumeVariance * velocityMultiplier;
+        player.volume = self->_masterVolume * randomVolumeVariance * velocityMultiplier * hwScale;
         
         // Schedule and trigger buffer
         [player scheduleBuffer:buffer atTime:nil options:AVAudioPlayerNodeBufferInterrupts completionHandler:nil];

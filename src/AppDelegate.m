@@ -6,6 +6,7 @@
 #import "UpdateManager.h"
 #import "SettingsWindowController.h"
 #import "HapticEngine.h"
+#import "HardwareMonitor.h"
 #import "AppProfileManager.h"
 #import <mach/mach_time.h>
 
@@ -104,7 +105,8 @@
     ripple.enabled = [defs boolForKey:@"rippleEnabled"];
     ripple.colorTheme = (ClackityRippleColor)[defs integerForKey:@"rippleColorTheme"];
     
-    // Setup and start input monitoring
+    // Setup and start input monitoring & hardware detection
+    [[HardwareMonitor sharedMonitor] start];
     InputMonitor *monitor = [InputMonitor sharedMonitor];
     monitor.delegate = self;
     monitor.secureInputProtectionEnabled = [defs boolForKey:@"secureInputProtection"];
@@ -249,6 +251,7 @@
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
+    [[HardwareMonitor sharedMonitor] stop];
     [[InputMonitor sharedMonitor] stop];
     [[AudioEngine sharedEngine] stop];
 }
@@ -266,7 +269,7 @@
     AudioEngine *audio = [AudioEngine sharedEngine];
     [audio playKeyWithCategory:category keyCode:keyCode isKeyUp:isKeyUp];
     
-    if (!isKeyUp && !audio.isGamingMuted) {
+    if (!isKeyUp && !audio.isGamingMuted && ![[HardwareMonitor sharedMonitor] shouldSuppressHaptics]) {
         [[HapticEngine sharedEngine] triggerKeyHaptic];
     }
     
@@ -324,7 +327,9 @@
     [audio playMouseClick:isRightClick isUp:isUp];
     
     if (!isUp && !audio.isGamingMuted) {
-        [[HapticEngine sharedEngine] triggerMouseHaptic];
+        if (![[HardwareMonitor sharedMonitor] shouldSuppressHaptics]) {
+            [[HapticEngine sharedEngine] triggerMouseHaptic];
+        }
         [[RippleOverlay sharedOverlay] showRippleAtScreenPoint:screenPoint isRightClick:isRightClick];
     }
 }
@@ -333,7 +338,9 @@
     AudioEngine *audio = [AudioEngine sharedEngine];
     [audio playForceClickSound];
     if (!audio.isGamingMuted) {
-        [[HapticEngine sharedEngine] triggerMouseHaptic];
+        if (![[HardwareMonitor sharedMonitor] shouldSuppressHaptics]) {
+            [[HapticEngine sharedEngine] triggerMouseHaptic];
+        }
         [[RippleOverlay sharedOverlay] showRippleAtScreenPoint:screenPoint isRightClick:YES];
     }
 }

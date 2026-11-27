@@ -1,6 +1,6 @@
 CC = clang
 CFLAGS = -fobjc-arc -O2 -Wall -Wno-deprecated-declarations -mmacosx-version-min=13.0 -arch arm64 -arch x86_64
-FRAMEWORKS = -framework Cocoa -framework AVFoundation -framework AudioToolbox -framework QuartzCore -framework ApplicationServices -framework ServiceManagement -framework Carbon -framework UniformTypeIdentifiers
+FRAMEWORKS = -framework Cocoa -framework AVFoundation -framework AudioToolbox -framework QuartzCore -framework ApplicationServices -framework ServiceManagement -framework Carbon -framework UniformTypeIdentifiers -framework IOKit
 
 APP_NAME = Clackity
 VERSION := $(shell /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)
@@ -21,6 +21,7 @@ SRCS = src/main.m \
        src/MenuBarController.m \
        src/UpdateManager.m \
        src/HapticEngine.m \
+       src/HardwareMonitor.m \
        src/AppProfileManager.m \
        src/SettingsWindowController.m
 
