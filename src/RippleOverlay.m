@@ -33,7 +33,6 @@
     if (self) {
         _enabled = YES;
         _colorTheme = ClackityRippleColorElectricCyan;
-        [self setupOverlayWindow];
     }
     return self;
 }
@@ -56,17 +55,15 @@
     }
 }
 
-- (void)setupOverlayWindow {
-    // Span across all visible screens
-    NSRect totalFrame = NSZeroRect;
-    for (NSScreen *screen in [NSScreen screens]) {
-        totalFrame = NSUnionRect(totalFrame, screen.frame);
-    }
+- (void)ensureOverlayPanel {
+    if (_overlayPanel) return;
     
-    _overlayPanel = [[NSPanel alloc] initWithContentRect:totalFrame
+    // Lightweight 100x100 panel (400x smaller than a full-screen Retina backing store)
+    NSRect panelFrame = NSMakeRect(0, 0, 100, 100);
+    _overlayPanel = [[NSPanel alloc] initWithContentRect:panelFrame
                                                styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                                  backing:NSBackingStoreBuffered
-                                                   defer:NO];
+                                                   defer:YES];
     
     _overlayPanel.backgroundColor = [NSColor clearColor];
     _overlayPanel.opaque = NO;
@@ -77,41 +74,38 @@
                                        NSWindowCollectionBehaviorStationary |
                                        NSWindowCollectionBehaviorIgnoresCycle;
     
-    _contentView = [[NSView alloc] initWithFrame:totalFrame];
+    _contentView = [[NSView alloc] initWithFrame:panelFrame];
     _contentView.wantsLayer = YES;
     _overlayPanel.contentView = _contentView;
-    
-    [_overlayPanel orderFrontRegardless];
-    
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(screenParametersChanged:)
-                                                 name:NSApplicationDidChangeScreenParametersNotification
-                                               object:nil];
 }
 
-- (void)screenParametersChanged:(NSNotification *)notification {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSRect totalFrame = NSZeroRect;
-        for (NSScreen *screen in [NSScreen screens]) {
-            totalFrame = NSUnionRect(totalFrame, screen.frame);
-        }
-        [self->_overlayPanel setFrame:totalFrame display:YES];
-        self->_contentView.frame = totalFrame;
-    });
+- (void)setEnabled:(BOOL)enabled {
+    _enabled = enabled;
+    if (!enabled && _overlayPanel) {
+        [_overlayPanel orderOut:nil];
+        _overlayPanel = nil;
+        _contentView = nil;
+    }
 }
 
 - (void)showRippleAtScreenPoint:(CGPoint)cgPoint isRightClick:(BOOL)isRightClick {
     if (!_enabled) return;
     
     dispatch_async(dispatch_get_main_queue(), ^{
+        [self ensureOverlayPanel];
+        
         // CGEventGetLocation is in top-left coordinates of primary display.
         // Convert to Cocoa bottom-left coordinates.
         NSScreen *primaryScreen = [NSScreen screens].firstObject;
         CGFloat primaryHeight = primaryScreen.frame.size.height;
         NSPoint cocoaPoint = NSMakePoint(cgPoint.x, primaryHeight - cgPoint.y);
         
-        // Convert screen coordinates to overlay content view coordinates
-        NSPoint viewPoint = [self->_overlayPanel convertPointFromScreen:cocoaPoint];
+        [self->_overlayPanel setFrameOrigin:NSMakePoint(cocoaPoint.x - 50.0, cocoaPoint.y - 50.0)];
+        if (!self->_overlayPanel.isVisible) {
+            [self->_overlayPanel orderFrontRegardless];
+        }
+        
+        NSPoint viewPoint = NSMakePoint(50.0, 50.0);
         
         // Create expanding ripple shape layer
         CAShapeLayer *rippleLayer = [CAShapeLayer layer];

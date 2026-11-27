@@ -55,11 +55,13 @@
     _statusItem.menu = _menu;
     
     [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(rebuildMenu)
+                                             selector:@selector(rebuildMenuIfOpen)
                                                  name:ClackitySoundPacksDidChangeNotification
                                                object:nil];
-    
-    [self rebuildMenu];
+}
+
+- (void)rebuildMenuIfOpen {
+    // Menu is rebuilt lazily in menuWillOpen: to avoid retaining unused NSMenuItems in RAM
 }
 
 - (NSImage *)createKeycapIcon {
@@ -98,6 +100,10 @@
     }
     [[SoundPackManager sharedManager] rescanPacks];
     [self rebuildMenu];
+}
+
+- (void)menuDidClose:(NSMenu *)menu {
+    [_menu removeAllItems];
 }
 
 - (void)rebuildMenu {
@@ -425,9 +431,6 @@
 
 - (void)updateStatusItem {
     [self updateStatusItemTitle];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self rebuildMenu];
-    });
 }
 
 @end
