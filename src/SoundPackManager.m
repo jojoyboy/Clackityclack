@@ -207,7 +207,36 @@
     return (_buffers.count > 0);
 }
 
+- (BOOL)loadMetadataOnly {
+    NSString *configPath = [_folderPath stringByAppendingPathComponent:@"config.json"];
+    NSData *configData = [NSData dataWithContentsOfFile:configPath];
+    if (configData) {
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:configData options:0 error:nil];
+        if ([json isKindOfClass:[NSDictionary class]]) {
+            NSString *customName = json[@"name"];
+            if ([customName isKindOfClass:[NSString class]] && customName.length > 0) {
+                _name = customName;
+            }
+            return YES;
+        }
+    }
+    NSArray<NSString *> *audioExts = @[@"wav", @"mp3", @"m4a", @"aiff", @"caf"];
+    for (NSString *sub in [[NSFileManager defaultManager] subpathsAtPath:_folderPath]) {
+        if ([audioExts containsObject:sub.pathExtension.lowercaseString]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (void)unloadBuffers {
+    [_buffers removeAllObjects];
+}
+
 - (AVAudioPCMBuffer *)bufferForCategory:(NSInteger)category isKeyUp:(BOOL)isKeyUp {
+    if (_buffers.count == 0) {
+        [self loadBuffers];
+    }
     if (category == 0 && !isKeyUp) {
         int v = arc4random_uniform(5);
         AVAudioPCMBuffer *varBuf = _buffers[[NSString stringWithFormat:@"0_0_%d", v]];
@@ -276,7 +305,7 @@
         BOOL isDir = NO;
         if ([fm fileExistsAtPath:fullPath isDirectory:&isDir] && isDir) {
             CustomSoundPack *pack = [[CustomSoundPack alloc] initWithName:item folderPath:fullPath];
-            if ([pack loadBuffers]) {
+            if ([pack loadMetadataOnly]) {
                 [_customPacks addObject:pack];
             }
         }
@@ -297,7 +326,7 @@
             }
             if (!exists) {
                 CustomSoundPack *pack = [[CustomSoundPack alloc] initWithName:item folderPath:fullPath];
-                if ([pack loadBuffers]) {
+                if ([pack loadMetadataOnly]) {
                     [_customPacks addObject:pack];
                 }
             }

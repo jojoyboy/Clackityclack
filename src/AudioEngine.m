@@ -2,7 +2,7 @@
 #import "HardwareMonitor.h"
 #import <mach/mach_time.h>
 
-#define VOICE_POOL_SIZE 24
+#define VOICE_POOL_SIZE 12
 
 @interface AudioEngine () {
     AVAudioEngine *_engine;
@@ -77,10 +77,14 @@
         _springPingEnabled = [defs boolForKey:@"springPing"];
         _roomAcousticPreset = (ClackityRoomAcousticPreset)[defs integerForKey:@"roomAcousticPreset"];
         
-        _typewriterBellBuffer = [SoundSynthesizer typewriterMarginBellBuffer];
-        _typewriterReturnBuffer = [SoundSynthesizer typewriterCarriageReturnBuffer];
-        _typewriterRatchetBuffer = [SoundSynthesizer typewriterBackspaceRatchetBuffer];
-        _springPingBuffer = [SoundSynthesizer springPingBuffer];
+        if (_typewriterModeEnabled) {
+            _typewriterBellBuffer = [SoundSynthesizer typewriterMarginBellBuffer];
+            _typewriterReturnBuffer = [SoundSynthesizer typewriterCarriageReturnBuffer];
+            _typewriterRatchetBuffer = [SoundSynthesizer typewriterBackspaceRatchetBuffer];
+        }
+        if (_springPingEnabled) {
+            _springPingBuffer = [SoundSynthesizer springPingBuffer];
+        }
         _currentLineCharCount = 0;
         _marginBellFired = NO;
         
@@ -101,11 +105,6 @@
     // Intermediate mixer: allows individual voice panning and unlimited voice inputs
     _subMixer = [[AVAudioMixerNode alloc] init];
     [_engine attachNode:_subMixer];
-    
-    // Spatial Room Acoustics Reverb Unit
-    _reverbNode = [[AVAudioUnitReverb alloc] init];
-    [_engine attachNode:_reverbNode];
-    [self applyRoomAcousticPreset:_roomAcousticPreset];
     
     // Parametric Tone & Krytox Lube Filter (4-band CoreAudio DSP)
     _eqNode = [[AVAudioUnitEQ alloc] initWithNumberOfBands:4];
@@ -143,9 +142,16 @@
     AVAudioFormat *stereoFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0 channels:2];
     AVAudioFormat *monoFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0 channels:1];
     
-    // Connect audio pipeline: subMixer -> reverbNode -> eqNode -> mixerNode
-    [_engine connect:_subMixer to:_reverbNode format:stereoFormat];
-    [_engine connect:_reverbNode to:_eqNode format:stereoFormat];
+    // Connect audio pipeline: subMixer -> [lazy reverbNode] -> eqNode -> mixerNode
+    if (_roomAcousticPreset != ClackityRoomAcousticDirect) {
+        _reverbNode = [[AVAudioUnitReverb alloc] init];
+        [_engine attachNode:_reverbNode];
+        [self applyRoomAcousticPreset:_roomAcousticPreset];
+        [_engine connect:_subMixer to:_reverbNode format:stereoFormat];
+        [_engine connect:_reverbNode to:_eqNode format:stereoFormat];
+    } else {
+        [_engine connect:_subMixer to:_eqNode format:stereoFormat];
+    }
     [_engine connect:_eqNode to:_mixerNode format:stereoFormat];
     
     _playerNodes = [NSMutableArray arrayWithCapacity:VOICE_POOL_SIZE];
@@ -220,8 +226,29 @@
 
 - (void)setRoomAcousticPreset:(ClackityRoomAcousticPreset)roomAcousticPreset {
     _roomAcousticPreset = roomAcousticPreset;
-    [self applyRoomAcousticPreset:roomAcousticPreset];
     [[NSUserDefaults standardUserDefaults] setInteger:roomAcousticPreset forKey:@"roomAcousticPreset"];
+    
+    dispatch_async(_audioQueue, ^{
+        AVAudioFormat *stereoFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100.0 channels:2];
+        if (roomAcousticPreset == ClackityRoomAcousticDirect) {
+            if (self->_reverbNode) {
+                [self->_engine disconnectNodeOutput:self->_subMixer];
+                [self->_engine disconnectNodeOutput:self->_reverbNode];
+                [self->_engine detachNode:self->_reverbNode];
+                self->_reverbNode = nil;
+                [self->_engine connect:self->_subMixer to:self->_eqNode format:stereoFormat];
+            }
+        } else {
+            if (!self->_reverbNode) {
+                self->_reverbNode = [[AVAudioUnitReverb alloc] init];
+                [self->_engine attachNode:self->_reverbNode];
+                [self->_engine disconnectNodeOutput:self->_subMixer];
+                [self->_engine connect:self->_subMixer to:self->_reverbNode format:stereoFormat];
+                [self->_engine connect:self->_reverbNode to:self->_eqNode format:stereoFormat];
+            }
+            [self applyRoomAcousticPreset:roomAcousticPreset];
+        }
+    });
 }
 
 - (void)applyRoomAcousticPreset:(ClackityRoomAcousticPreset)preset {
@@ -261,6 +288,11 @@
 
 - (void)setSpringPingEnabled:(BOOL)springPingEnabled {
     _springPingEnabled = springPingEnabled;
+    if (springPingEnabled && !_springPingBuffer) {
+        _springPingBuffer = [SoundSynthesizer springPingBuffer];
+    } else if (!springPingEnabled) {
+        _springPingBuffer = nil;
+    }
     [[NSUserDefaults standardUserDefaults] setBool:springPingEnabled forKey:@"springPing"];
 }
 
@@ -277,11 +309,14 @@
         [self->_engine disconnectNodeOutput:self->_eqNode];
         [self->_engine connect:self->_eqNode to:self->_mixerNode format:stereoFormat];
         
-        [self->_engine disconnectNodeOutput:self->_reverbNode];
-        [self->_engine connect:self->_reverbNode to:self->_eqNode format:stereoFormat];
-        
         [self->_engine disconnectNodeOutput:self->_subMixer];
-        [self->_engine connect:self->_subMixer to:self->_reverbNode format:stereoFormat];
+        if (self->_reverbNode) {
+            [self->_engine disconnectNodeOutput:self->_reverbNode];
+            [self->_engine connect:self->_subMixer to:self->_reverbNode format:stereoFormat];
+            [self->_engine connect:self->_reverbNode to:self->_eqNode format:stereoFormat];
+        } else {
+            [self->_engine connect:self->_subMixer to:self->_eqNode format:stereoFormat];
+        }
         
         for (AVAudioPlayerNode *player in self->_playerNodes) {
             [self->_engine disconnectNodeOutput:player];
@@ -334,6 +369,17 @@
     _mixerNode.outputVolume = masterVolume;
 }
 
+- (void)setCustomPack:(CustomSoundPack *)customPack {
+    if (_customPack && _customPack != customPack) {
+        [_customPack unloadBuffers];
+    }
+    _customPack = customPack;
+    if (_customPack) {
+        [_customPack loadBuffers];
+    }
+    [self reloadBuffers];
+}
+
 - (void)setCurrentProfile:(ClackitySoundProfile)currentProfile {
     _currentProfile = currentProfile;
     [self reloadBuffers];
@@ -342,6 +388,10 @@
 - (void)reloadBuffers {
     dispatch_async(_audioQueue, ^{
         [self->_bufferCache removeAllObjects];
+        if (self->_customPack != nil) {
+            // Active custom pack provides all buffers; keep synthesized cache empty to save RAM
+            return;
+        }
         
         // Cache combinations of category and KeyDown/KeyUp
         NSArray *categories = @[
@@ -580,6 +630,15 @@
 
 - (void)setTypewriterModeEnabled:(BOOL)typewriterModeEnabled {
     _typewriterModeEnabled = typewriterModeEnabled;
+    if (typewriterModeEnabled) {
+        if (!_typewriterBellBuffer) _typewriterBellBuffer = [SoundSynthesizer typewriterMarginBellBuffer];
+        if (!_typewriterReturnBuffer) _typewriterReturnBuffer = [SoundSynthesizer typewriterCarriageReturnBuffer];
+        if (!_typewriterRatchetBuffer) _typewriterRatchetBuffer = [SoundSynthesizer typewriterBackspaceRatchetBuffer];
+    } else {
+        _typewriterBellBuffer = nil;
+        _typewriterReturnBuffer = nil;
+        _typewriterRatchetBuffer = nil;
+    }
     [[NSUserDefaults standardUserDefaults] setBool:typewriterModeEnabled forKey:@"typewriterModeEnabled"];
 }
 
@@ -609,7 +668,9 @@
 }
 
 - (void)playTypewriterBell {
-    if (!_typewriterBellBuffer || _isMeetingMuted || _isGamingMuted) return;
+    if (_isMeetingMuted || _isGamingMuted || [[HardwareMonitor sharedMonitor] shouldMuteAudio]) return;
+    if (!_typewriterBellBuffer) _typewriterBellBuffer = [SoundSynthesizer typewriterMarginBellBuffer];
+    if (!_typewriterBellBuffer) return;
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
@@ -624,7 +685,9 @@
 }
 
 - (void)playTypewriterCarriageReturn {
-    if (!_typewriterReturnBuffer || _isMeetingMuted || _isGamingMuted) return;
+    if (_isMeetingMuted || _isGamingMuted || [[HardwareMonitor sharedMonitor] shouldMuteAudio]) return;
+    if (!_typewriterReturnBuffer) _typewriterReturnBuffer = [SoundSynthesizer typewriterCarriageReturnBuffer];
+    if (!_typewriterReturnBuffer) return;
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;
@@ -639,7 +702,9 @@
 }
 
 - (void)playTypewriterRatchet {
-    if (!_typewriterRatchetBuffer || _isMeetingMuted || _isGamingMuted) return;
+    if (_isMeetingMuted || _isGamingMuted || [[HardwareMonitor sharedMonitor] shouldMuteAudio]) return;
+    if (!_typewriterRatchetBuffer) _typewriterRatchetBuffer = [SoundSynthesizer typewriterBackspaceRatchetBuffer];
+    if (!_typewriterRatchetBuffer) return;
     dispatch_async(_audioQueue, ^{
         AVAudioPlayerNode *player = self->_playerNodes[self->_currentPlayerIndex];
         self->_currentPlayerIndex = (self->_currentPlayerIndex + 1) % VOICE_POOL_SIZE;

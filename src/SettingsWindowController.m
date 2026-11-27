@@ -444,26 +444,8 @@
 }
 
 - (instancetype)init {
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)
-                                                   styleMask:(NSWindowStyleMaskTitled |
-                                                              NSWindowStyleMaskClosable |
-                                                              NSWindowStyleMaskMiniaturizable |
-                                                              NSWindowStyleMaskResizable |
-                                                              NSWindowStyleMaskFullSizeContentView)
-                                                     backing:NSBackingStoreBuffered
-                                                       defer:NO];
-    window.title = @"Clackity Settings";
-    window.titlebarAppearsTransparent = YES;
-    window.titleVisibility = NSWindowTitleHidden;
-    window.releasedWhenClosed = NO;
-    window.minSize = NSMakeSize(720, 500);
-    [window center];
-    
-    self = [super initWithWindow:window];
+    self = [super initWithWindow:nil];
     if (self) {
-        window.delegate = self;
-        [self buildUI];
-        
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(soundPacksDidChangeNotification:)
                                                      name:ClackitySoundPacksDidChangeNotification
@@ -478,6 +460,27 @@
                                                    object:nil];
     }
     return self;
+}
+
+- (void)ensureWindowCreated {
+    if (self.window) return;
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)
+                                                   styleMask:(NSWindowStyleMaskTitled |
+                                                              NSWindowStyleMaskClosable |
+                                                              NSWindowStyleMaskMiniaturizable |
+                                                              NSWindowStyleMaskResizable |
+                                                              NSWindowStyleMaskFullSizeContentView)
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.title = @"Clackity Settings";
+    window.titlebarAppearsTransparent = YES;
+    window.titleVisibility = NSWindowTitleHidden;
+    window.releasedWhenClosed = NO;
+    window.minSize = NSMakeSize(720, 500);
+    [window center];
+    window.delegate = self;
+    self.window = window;
+    [self buildUI];
 }
 
 #pragma mark - Main UI Construction
@@ -1752,6 +1755,7 @@
 }
 
 - (void)showSettingsWindow:(nullable id)sender {
+    [self ensureWindowCreated];
     BOOL keepInDock = [[NSUserDefaults standardUserDefaults] boolForKey:@"showInDock"];
     if (keepInDock) {
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -1768,6 +1772,25 @@
 
 - (void)windowWillClose:(NSNotification *)notification {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    
+    // Tear down Settings UI views & window backing store on close to keep idle RAM minimal
+    self.window.delegate = nil;
+    self.window = nil;
+    self.sidebarView = nil;
+    self.sidebarButtons = nil;
+    self.sidebarOdometerLabel = nil;
+    self.detailContainerView = nil;
+    self.detailHeaderTitle = nil;
+    self.contentScrollView = nil;
+    self.switchesSectionView = nil;
+    self.switchCardViews = nil;
+    self.acousticsSectionView = nil;
+    self.hapticsSectionView = nil;
+    self.visualsSectionView = nil;
+    self.storeSectionView = nil;
+    self.generalSectionView = nil;
+    self.packsTableView = nil;
+    self.displayedPacks = nil;
 }
 
 #pragma mark - Actions
@@ -2309,6 +2332,7 @@
 
 - (void)appProfileDidChangeNotification:(NSNotification *)note {
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.window) return;
         [self syncUIFromState];
     });
 }
@@ -2346,6 +2370,7 @@
 
 - (void)hardwareDidChangeNotification:(NSNotification *)note {
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.window) return;
         [self syncUIFromState];
     });
 }
@@ -2480,6 +2505,7 @@
 
 - (void)soundPacksDidChangeNotification:(NSNotification *)note {
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.window) return;
         [self reloadSwitchesList];
         [self filterAndReloadPacksTable];
         [self reloadProfilePopUp];

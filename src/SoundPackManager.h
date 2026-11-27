@@ -9,7 +9,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSMutableDictionary<NSString *, AVAudioPCMBuffer *> *buffers;
 
 - (instancetype)initWithName:(NSString *)name folderPath:(NSString *)folderPath;
+- (BOOL)loadMetadataOnly;
 - (BOOL)loadBuffers;
+- (void)unloadBuffers;
 - (nullable AVAudioPCMBuffer *)bufferForCategory:(NSInteger)category isKeyUp:(BOOL)isKeyUp;
 @end
 
